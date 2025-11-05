@@ -8,8 +8,10 @@ on:
       - pablo-dev
 
 jobs:
-  deploy:
-    runs-on: self-hosted
+  build-test:
+    name: Build & Test Application
+    runs-on: self-hosted   # tu runner en Ubuntu (grupo02)
+
     steps:
       - name: Checkout del código
         uses: actions/checkout@v3
@@ -20,9 +22,34 @@ jobs:
           echo "Sistema operativo:"
           uname -a
 
-      - name: Simular despliegue
-        run: |
-          echo "Iniciando despliegue en entorno de desarrollo (OracleApp - Ubuntu)"
-          echo "Copia de archivos al servidor..."
-          echo "Reinicio de servicios de aplicación..."
-          echo "🚀 Despliegue completado con éxito ✅"
+      # ===== FRONTEND (React/Node) =====
+      - name: Configurar Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Instalar dependencias frontend
+        working-directory: ./frontend
+        run: npm install
+
+      - name: Ejecutar pruebas frontend
+        working-directory: ./frontend
+        run: npm test -- --watchAll=false
+
+      # ===== BACKEND (Laravel/PHP) =====
+      - name: Configurar PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, pdo, bcmath, xml, ctype, json, tokenizer, fileinfo
+
+      - name: Instalar dependencias backend
+        working-directory: ./backend
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Ejecutar pruebas backend
+        working-directory: ./backend
+        run: php artisan test
+
+      - name: Confirmar finalización
+        run: echo "🚀 Despliegue y pruebas completadas con éxito ✅"
