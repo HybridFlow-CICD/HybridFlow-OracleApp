@@ -1,0 +1,28 @@
+name: CI/CD OracleApp - Development
+
+on:
+  push:
+    branches:
+      - develop
+      - luis-dev
+      - pablo-dev
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@v3
+
+      - name: Mostrar entorno del runner
+        run: |
+          echo "✅ Runner activo en: $(hostname)"
+          echo "Sistema operativo:"
+          uname -a
+
+      - name: Simular despliegue
+        run: |
+          echo "Iniciando despliegue en entorno de desarrollo (OracleApp - Ubuntu)"
+          echo "Copia de archivos al servidor..."
+          echo "Reinicio de servicios de aplicación..."
+          echo "🚀 Despliegue completado con éxito ✅"
