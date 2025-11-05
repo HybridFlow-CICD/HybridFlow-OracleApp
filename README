@@ -13,4 +13,4 @@ Cada desarrollador trabaja en su rama personal, luego hace un Pull Request a `de
 Cuando `develop` está estable, se integra en `main` para despliegue a producción.
 
 
-Este es un cambio de prueba para push
+Este es un cambio de prueba para push2
