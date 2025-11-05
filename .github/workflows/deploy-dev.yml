@@ -10,19 +10,29 @@ on:
 jobs:
   build-test:
     name: Build & Test Application
-    runs-on: self-hosted   # tu runner en Ubuntu (grupo02)
+    runs-on: self-hosted   # Runner en Ubuntu (grupo02)
 
     steps:
+      # === CHECKOUT DEL CÓDIGO ===
       - name: Checkout del código
         uses: actions/checkout@v3
 
+      # === MOSTRAR ENTORNO DEL RUNNER ===
       - name: Mostrar entorno del runner
         run: |
           echo "✅ Runner activo en: $(hostname)"
           echo "Sistema operativo:"
           uname -a
 
-      # ===== FRONTEND (React/Node) =====
+      # === TESTS AUTOMÁTICOS (JEST) ===
+      - name: Ejecutar pruebas Jest del frontend
+        working-directory: ./frontend
+        run: |
+          echo "🔍 Ejecutando pruebas unitarias con Jest..."
+          npm ci
+          npm test -- --watchAll=false
+
+      # === FRONTEND (React/Node) ===
       - name: Configurar Node.js
         uses: actions/setup-node@v3
         with:
@@ -32,11 +42,16 @@ jobs:
         working-directory: ./frontend
         run: npm install
 
-      - name: Ejecutar pruebas frontend
+      - name: Build de la aplicación frontend
         working-directory: ./frontend
-        run: npm test -- --watchAll=false
+        run: npm run build
 
-      # ===== BACKEND (Laravel/PHP) =====
+      - name: Crear artefacto del frontend (ZIP)
+        run: |
+          echo "📦 Empaquetando el build del frontend..."
+          zip -r frontend_build.zip ./frontend/build
+
+      # === BACKEND (Laravel/PHP) ===
       - name: Configurar PHP
         uses: shivammathur/setup-php@v2
         with:
@@ -51,5 +66,6 @@ jobs:
         working-directory: ./backend
         run: php artisan test
 
+      # === FINALIZACIÓN ===
       - name: Confirmar finalización
         run: echo "🚀 Despliegue y pruebas completadas con éxito ✅"
