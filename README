@@ -1,0 +1,13 @@
+# HybridFlow Oracle App
+
+Repositorio para el módulo Oracle del proyecto HybridFlow CI/CD.
+
+## Ramas activas
+- main: Producción (VMware)
+- develop: Integración (Proxmox)
+- luis-dev: Rama personal de desarrollo
+- pablo-dev: Rama personal de desarrollo
+
+## Flujo de trabajo
+Cada desarrollador trabaja en su rama personal, luego hace un Pull Request a `develop`.  
+Cuando `develop` está estable, se integra en `main` para despliegue a producción.
