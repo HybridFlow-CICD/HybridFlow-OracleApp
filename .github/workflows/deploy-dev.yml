@@ -42,24 +42,24 @@ jobs:
 
       - name: Ejecutar pruebas Jest del frontend
         env:
-          CI: true     # evita modo interactivo de react-scripts
+          CI: true
         working-directory: ./frontend
         run: npm test -- --watchAll=false
 
       # =========================================
-      # BACKEND (Laravel/PHP) SIN setup-php
+      # BACKEND (Laravel/PHP)
       # =========================================
       - name: Verificar PHP y Composer
         run: |
           set -e
           php -v
           if ! command -v composer >/dev/null 2>&1; then
-            echo "🛠  Instalando Composer (no encontrado en el runner)..."
+            echo "🛠 Instalando Composer..."
             EXPECTED_SIGNATURE="$(wget -q -O - https://composer.github.io/installer.sig)"
             php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
             ACTUAL_SIGNATURE="$(php -r "echo hash_file('sha384', 'composer-setup.php');")"
             if [ "$EXPECTED_SIGNATURE" != "$ACTUAL_SIGNATURE" ]; then
-              echo 'ERROR: instalador de Composer corrupto'; rm composer-setup.php; exit 1
+              echo 'ERROR: Instalador de Composer corrupto'; rm composer-setup.php; exit 1
             fi
             sudo php composer-setup.php --install-dir=/usr/local/bin --filename=composer
             rm composer-setup.php
@@ -89,15 +89,27 @@ jobs:
           fi
           php artisan key:generate --force
 
-      - name: Ejecutar pruebas backend (si existen)
+      - name: Ejecutar pruebas backend (PHPUnit)
         working-directory: ./backend
         run: |
           if ls tests/Feature/*.php >/dev/null 2>&1 || ls tests/Unit/*.php >/dev/null 2>&1; then
             php artisan test --no-interaction
           else
-            echo "ℹ️  No hay pruebas en Laravel, se omite este paso."
+            echo "ℹ️ No hay pruebas en Laravel, se omite este paso."
           fi
 
+      # =========================================
+      # DEPLOY AUTOMÁTICO (Tarea 24)
+      # =========================================
+      - name: Desplegar código en OracleApp (Proxmox)
+        if: success()
+        run: |
+          echo "🚀 Iniciando despliegue en VM OracleApp..."
+          ssh administrador@192.168.1.100 "cd /var/www/html/HybridFlow-OracleApp && git pull origin develop"
+          echo "✅ Despliegue completado exitosamente."
+
+      # =========================================
+      # FINALIZACIÓN
+      # =========================================
       - name: Confirmar finalización
         run: echo "🚀 Pipeline DEV completado con éxito ✅"
-
