@@ -111,6 +111,7 @@ jobs:
           cd /var/www/html/HybridFlow-OracleApp
           
           echo "🧹 Limpiando cambios locales antes del pull..."
+          sudo chown -R ubuntu:ubuntu /var/www/html/HybridFlow-OracleApp
           git fetch origin pablo-dev
           git reset --hard origin/pablo-dev
 
