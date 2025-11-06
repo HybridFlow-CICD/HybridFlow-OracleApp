@@ -101,6 +101,7 @@ jobs:
           fi
 
            # =========================================
+      # =========================================
       # 4️⃣ DESPLIEGUE AUTOMÁTICO (local)
       # =========================================
       - name: Desplegar aplicación localmente (Ubuntu OracleApp)
@@ -109,17 +110,36 @@ jobs:
           set -e
           echo "🚀 Iniciando despliegue local en la VM Ubuntu (OracleApp)..."
           cd /var/www/html/HybridFlow-OracleApp
+          
           echo "📦 Actualizando código desde el repositorio..."
-          git fetch origin
-          git checkout pablo-dev
           git pull origin pablo-dev
+          
+          echo "🔍 Verificando dependencias de Laravel..."
+          if [ ! -d "backend/vendor" ]; then
+            echo "📦 Instalando dependencias de Composer..."
+            cd backend
+            composer install --no-interaction --prefer-dist --optimize-autoloader
+            cd ..
+          fi
+
+          echo "🔑 Verificando archivo .env..."
+          if [ ! -f backend/.env ]; then
+            cp backend/.env.example backend/.env
+            php backend/artisan key:generate --force
+          fi
+
           echo "🔧 Aplicando migraciones y limpieza de caché..."
           cd backend
           php artisan migrate --force || echo "ℹ️ No hay migraciones pendientes."
           php artisan config:clear
           php artisan cache:clear
-          echo "$(date -u) - Deploy ejecutado correctamente desde pipeline" > .last_deploy
-          echo "✅ Despliegue completado exitosamente en la VM (Ubuntu OracleApp)."
+
+          echo "🧹 Corrigiendo permisos..."
+          sudo chown -R www-data:www-data /var/www/html/HybridFlow-OracleApp
+          sudo chmod -R 755 /var/www/html/HybridFlow-OracleApp
+
+          echo "✅ Despliegue completado exitosamente en la misma VM (Ubuntu OracleApp)."
+
 
 
       # =========================================
