@@ -17,17 +17,19 @@ jobs:
     runs-on: self-hosted   # Runner Linux (grupo02)
 
     steps:
-      # 1) Código
+      # =========================================
+      # 1️⃣ CÓDIGO FUENTE
+      # =========================================
       - name: Checkout del código
         uses: actions/checkout@v4
 
       - name: Mostrar entorno del runner
         run: |
-          echo "✅ Runner: $(hostname)"
+          echo "✅ Runner activo: $(hostname)"
           uname -a
 
       # =========================================
-      # FRONTEND (React)
+      # 2️⃣ FRONTEND (React)
       # =========================================
       - name: Configurar Node.js
         uses: actions/setup-node@v4
@@ -42,24 +44,24 @@ jobs:
 
       - name: Ejecutar pruebas Jest del frontend
         env:
-          CI: true     # evita modo interactivo de react-scripts
+          CI: true
         working-directory: ./frontend
         run: npm test -- --watchAll=false
 
       # =========================================
-      # BACKEND (Laravel/PHP) SIN setup-php
+      # 3️⃣ BACKEND (Laravel / PHP)
       # =========================================
       - name: Verificar PHP y Composer
         run: |
           set -e
           php -v
           if ! command -v composer >/dev/null 2>&1; then
-            echo "🛠  Instalando Composer (no encontrado en el runner)..."
+            echo "🛠 Instalando Composer..."
             EXPECTED_SIGNATURE="$(wget -q -O - https://composer.github.io/installer.sig)"
             php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
             ACTUAL_SIGNATURE="$(php -r "echo hash_file('sha384', 'composer-setup.php');")"
             if [ "$EXPECTED_SIGNATURE" != "$ACTUAL_SIGNATURE" ]; then
-              echo 'ERROR: instalador de Composer corrupto'; rm composer-setup.php; exit 1
+              echo '❌ ERROR: Instalador de Composer corrupto'; rm composer-setup.php; exit 1
             fi
             sudo php composer-setup.php --install-dir=/usr/local/bin --filename=composer
             rm composer-setup.php
@@ -89,15 +91,61 @@ jobs:
           fi
           php artisan key:generate --force
 
-      - name: Ejecutar pruebas backend (si existen)
+      - name: Ejecutar pruebas backend (PHPUnit)
         working-directory: ./backend
         run: |
           if ls tests/Feature/*.php >/dev/null 2>&1 || ls tests/Unit/*.php >/dev/null 2>&1; then
             php artisan test --no-interaction
           else
-            echo "ℹ️  No hay pruebas en Laravel, se omite este paso."
+            echo "ℹ️ No hay pruebas en Laravel, se omite este paso."
           fi
 
+      # =========================================
+      # 4️⃣ DESPLIEGUE AUTOMÁTICO (local)
+      # =========================================
+      - name: Desplegar aplicación localmente (Ubuntu OracleApp)
+        if: success()
+        run: |
+          set -e
+          echo "🚀 Iniciando despliegue local en la VM Ubuntu (OracleApp)..."
+          cd /var/www/html/HybridFlow-OracleApp
+          
+          echo "🧹 Limpiando cambios locales antes del pull..."
+          sudo chown -R ubuntu:ubuntu /var/www/html/HybridFlow-OracleApp
+          git fetch origin pablo-dev
+          git reset --hard origin/pablo-dev
+
+          echo "📦 Actualizando código desde el repositorio..."
+          git pull origin pablo-dev
+
+          echo "🔍 Verificando dependencias de Laravel..."
+          if [ ! -d "backend/vendor" ]; then
+            echo "📦 Instalando dependencias de Composer..."
+            cd backend
+            composer install --no-interaction --prefer-dist --optimize-autoloader
+            cd ..
+          fi
+
+          echo "🔑 Verificando archivo .env..."
+          if [ ! -f backend/.env ]; then
+            cp backend/.env.example backend/.env
+            php backend/artisan key:generate --force
+          fi
+
+          echo "🔧 Aplicando migraciones y limpieza de caché..."
+          cd backend
+          php artisan migrate --force || echo "ℹ️ No hay migraciones pendientes."
+          php artisan config:clear
+          php artisan cache:clear
+
+          echo "🧹 Corrigiendo permisos..."
+          sudo chown -R ubuntu:ubuntu /var/www/html/HybridFlow-OracleApp
+          sudo chmod -R 755 /var/www/html/HybridFlow-OracleApp
+
+          echo "✅ Despliegue completado exitosamente en la misma VM (Ubuntu OracleApp)."
+
+      # =========================================
+      # 5️⃣ FINALIZACIÓN
+      # =========================================
       - name: Confirmar finalización
         run: echo "🚀 Pipeline DEV completado con éxito ✅"
-
