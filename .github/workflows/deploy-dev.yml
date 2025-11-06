@@ -100,7 +100,6 @@ jobs:
             echo "ℹ️ No hay pruebas en Laravel, se omite este paso."
           fi
 
-           # =========================================
       # =========================================
       # 4️⃣ DESPLIEGUE AUTOMÁTICO (local)
       # =========================================
@@ -111,9 +110,13 @@ jobs:
           echo "🚀 Iniciando despliegue local en la VM Ubuntu (OracleApp)..."
           cd /var/www/html/HybridFlow-OracleApp
           
+          echo "🧹 Limpiando cambios locales antes del pull..."
+          git fetch origin pablo-dev
+          git reset --hard origin/pablo-dev
+
           echo "📦 Actualizando código desde el repositorio..."
           git pull origin pablo-dev
-          
+
           echo "🔍 Verificando dependencias de Laravel..."
           if [ ! -d "backend/vendor" ]; then
             echo "📦 Instalando dependencias de Composer..."
@@ -135,12 +138,10 @@ jobs:
           php artisan cache:clear
 
           echo "🧹 Corrigiendo permisos..."
-          sudo chown -R www-data:www-data /var/www/html/HybridFlow-OracleApp
+          sudo chown -R ubuntu:ubuntu /var/www/html/HybridFlow-OracleApp
           sudo chmod -R 755 /var/www/html/HybridFlow-OracleApp
 
           echo "✅ Despliegue completado exitosamente en la misma VM (Ubuntu OracleApp)."
-
-
 
       # =========================================
       # 5️⃣ FINALIZACIÓN
