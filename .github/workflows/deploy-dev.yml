@@ -1,0 +1,103 @@
+name: CI/CD OracleApp - Development
+
+on:
+  push:
+    branches:
+      - develop
+      - luis-dev
+      - pablo-dev
+
+concurrency:
+  group: oracleapp-dev-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: Build & Test Application
+    runs-on: self-hosted   # Runner Linux (grupo02)
+
+    steps:
+      # 1) Código
+      - name: Checkout del código
+        uses: actions/checkout@v4
+
+      - name: Mostrar entorno del runner
+        run: |
+          echo "✅ Runner: $(hostname)"
+          uname -a
+
+      # =========================================
+      # FRONTEND (React)
+      # =========================================
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18.x'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Instalar dependencias frontend
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Ejecutar pruebas Jest del frontend
+        env:
+          CI: true     # evita modo interactivo de react-scripts
+        working-directory: ./frontend
+        run: npm test -- --watchAll=false
+
+      # =========================================
+      # BACKEND (Laravel/PHP) SIN setup-php
+      # =========================================
+      - name: Verificar PHP y Composer
+        run: |
+          set -e
+          php -v
+          if ! command -v composer >/dev/null 2>&1; then
+            echo "🛠  Instalando Composer (no encontrado en el runner)..."
+            EXPECTED_SIGNATURE="$(wget -q -O - https://composer.github.io/installer.sig)"
+            php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
+            ACTUAL_SIGNATURE="$(php -r "echo hash_file('sha384', 'composer-setup.php');")"
+            if [ "$EXPECTED_SIGNATURE" != "$ACTUAL_SIGNATURE" ]; then
+              echo 'ERROR: instalador de Composer corrupto'; rm composer-setup.php; exit 1
+            fi
+            sudo php composer-setup.php --install-dir=/usr/local/bin --filename=composer
+            rm composer-setup.php
+          fi
+          composer --version
+
+      - name: Caché de Composer
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.composer/cache/files
+            backend/vendor
+          key: composer-${{ hashFiles('backend/composer.lock') }}
+          restore-keys: |
+            composer-
+
+      - name: Instalar dependencias backend
+        working-directory: ./backend
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Preparar entorno Laravel (.env y APP_KEY)
+        working-directory: ./backend
+        run: |
+          set -e
+          if [ ! -f .env ]; then
+            cp .env.example .env || true
+          fi
+          php artisan key:generate --force
+
+      - name: Ejecutar pruebas backend (si existen)
+        working-directory: ./backend
+        run: |
+          if ls tests/Feature/*.php >/dev/null 2>&1 || ls tests/Unit/*.php >/dev/null 2>&1; then
+            php artisan test --no-interaction
+          else
+            echo "ℹ️  No hay pruebas en Laravel, se omite este paso."
+          fi
+
+      - name: Confirmar finalización
+        run: echo "🚀 Pipeline DEV completado con éxito ✅"
+
