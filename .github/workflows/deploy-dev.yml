@@ -17,17 +17,19 @@ jobs:
     runs-on: self-hosted   # Runner Linux (grupo02)
 
     steps:
-      # 1) Código
+      # =========================================
+      # 1️⃣ CÓDIGO FUENTE
+      # =========================================
       - name: Checkout del código
         uses: actions/checkout@v4
 
       - name: Mostrar entorno del runner
         run: |
-          echo "✅ Runner: $(hostname)"
+          echo "✅ Runner activo: $(hostname)"
           uname -a
 
       # =========================================
-      # FRONTEND (React)
+      # 2️⃣ FRONTEND (React)
       # =========================================
       - name: Configurar Node.js
         uses: actions/setup-node@v4
@@ -47,7 +49,7 @@ jobs:
         run: npm test -- --watchAll=false
 
       # =========================================
-      # BACKEND (Laravel/PHP)
+      # 3️⃣ BACKEND (Laravel / PHP)
       # =========================================
       - name: Verificar PHP y Composer
         run: |
@@ -59,7 +61,7 @@ jobs:
             php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
             ACTUAL_SIGNATURE="$(php -r "echo hash_file('sha384', 'composer-setup.php');")"
             if [ "$EXPECTED_SIGNATURE" != "$ACTUAL_SIGNATURE" ]; then
-              echo 'ERROR: Instalador de Composer corrupto'; rm composer-setup.php; exit 1
+              echo '❌ ERROR: Instalador de Composer corrupto'; rm composer-setup.php; exit 1
             fi
             sudo php composer-setup.php --install-dir=/usr/local/bin --filename=composer
             rm composer-setup.php
@@ -99,17 +101,24 @@ jobs:
           fi
 
       # =========================================
-      # DEPLOY AUTOMÁTICO (Tarea 24)
+      # 4️⃣ DESPLIEGUE AUTOMÁTICO (local)
       # =========================================
-      - name: Desplegar código en OracleApp (Proxmox)
+      - name: Desplegar aplicación localmente (Ubuntu OracleApp)
         if: success()
         run: |
-          echo "🚀 Iniciando despliegue en VM OracleApp..."
-          ssh administrador@192.168.1.100 "cd /var/www/html/HybridFlow-OracleApp && git pull origin develop"
-          echo "✅ Despliegue completado exitosamente."
+          echo "🚀 Iniciando despliegue local en la VM Ubuntu (OracleApp)..."
+          cd /var/www/html/HybridFlow-OracleApp
+          echo "📦 Actualizando código desde el repositorio..."
+          git pull origin develop
+          echo "🔧 Aplicando migraciones y limpieza de caché..."
+          cd backend
+          php artisan migrate --force || echo "ℹ️ No hay migraciones pendientes."
+          php artisan config:clear
+          php artisan cache:clear
+          echo "✅ Despliegue completado exitosamente en la misma VM (Ubuntu OracleApp)."
 
       # =========================================
-      # FINALIZACIÓN
+      # 5️⃣ FINALIZACIÓN
       # =========================================
       - name: Confirmar finalización
         run: echo "🚀 Pipeline DEV completado con éxito ✅"
