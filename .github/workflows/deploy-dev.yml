@@ -100,22 +100,27 @@ jobs:
             echo "ℹ️ No hay pruebas en Laravel, se omite este paso."
           fi
 
-      # =========================================
+           # =========================================
       # 4️⃣ DESPLIEGUE AUTOMÁTICO (local)
       # =========================================
       - name: Desplegar aplicación localmente (Ubuntu OracleApp)
         if: success()
         run: |
+          set -e
           echo "🚀 Iniciando despliegue local en la VM Ubuntu (OracleApp)..."
           cd /var/www/html/HybridFlow-OracleApp
           echo "📦 Actualizando código desde el repositorio..."
-          git pull origin develop
+          git fetch origin
+          git checkout pablo-dev
+          git pull origin pablo-dev
           echo "🔧 Aplicando migraciones y limpieza de caché..."
           cd backend
           php artisan migrate --force || echo "ℹ️ No hay migraciones pendientes."
           php artisan config:clear
           php artisan cache:clear
-          echo "✅ Despliegue completado exitosamente en la misma VM (Ubuntu OracleApp)."
+          echo "$(date -u) - Deploy ejecutado correctamente desde pipeline" > .last_deploy
+          echo "✅ Despliegue completado exitosamente en la VM (Ubuntu OracleApp)."
+
 
       # =========================================
       # 5️⃣ FINALIZACIÓN
