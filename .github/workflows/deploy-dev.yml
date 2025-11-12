@@ -105,7 +105,7 @@ jobs:
           npx eslint src || true
 
 
-            # =========================================================
+   # =========================================================
   # DEPLOY DEV (ramas: develop y pablo-dev)
   # =========================================================
   deploy-dev:
@@ -143,9 +143,9 @@ jobs:
             composer install --no-interaction --prefer-dist --optimize-autoloader &&
 
             # --- Instalar paquete Laravel OCI8 (si no existe) ---
-            if ! composer show | grep -q "yajra/laravel-oci8"; then
-              echo '📦 Instalando Yajra OCI8 para Laravel...'
-              composer require yajra/laravel-oci8:"^9.5" --no-interaction
+            if ! composer show | grep -q 'yajra/laravel-oci8'; then
+              echo '📦 Instalando Yajra OCI8 para Laravel (compatible con PHP 8.3)...'
+              composer require yajra/laravel-oci8:^9.5 --no-interaction || true
             else
               echo '✅ Yajra OCI8 ya instalado.'
             fi
@@ -158,6 +158,7 @@ jobs:
             echo '🩺 Verificando conexión directa a Oracle (Tinker)...'
             if php artisan tinker --execute=\"DB::connection()->getPdo(); echo '✅ Conectado correctamente a orclpdb';\"; then
               echo '✅ Conexión exitosa, ejecutando migraciones...'
+              composer dump-autoload -o &&
               php artisan migrate --force
             else
               echo '❌ Falló la conexión a Oracle, no se ejecutarán migraciones.'
