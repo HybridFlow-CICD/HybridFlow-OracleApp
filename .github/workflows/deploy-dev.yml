@@ -91,7 +91,7 @@ jobs:
             echo "ℹ️ No hay pruebas en Laravel, se omite este paso."
           fi
 
-      # ---------- Lint/Quality (suave) ----------
+      # ---------- Lint/Quality ----------
       - name: Analizar calidad del código PHP (Laravel)
         working-directory: ./backend
         run: |
@@ -124,17 +124,35 @@ jobs:
             git fetch origin develop &&
             git reset --hard origin/develop &&
             git pull origin develop &&
+
+            # --- Instalar y configurar driver OCI8 si no existe ---
+            echo '🧩 Verificando e instalando Oracle Instant Client y extensión OCI8...' &&
+            sudo apt update -y &&
+            sudo apt install -y php-dev php-pear libaio1 unzip &&
+            if ! php -m | grep -q oci8; then
+              sudo pecl install oci8 <<<'instantclient,/opt/oracle/instantclient' || true
+              echo 'extension=oci8.so' | sudo tee /etc/php/\$(php -r 'echo PHP_MAJOR_VERSION.\".\".PHP_MINOR_VERSION;')/cli/conf.d/20-oci8.ini
+            fi &&
+            php -m | grep oci &&
+
+            # --- Verificar conectividad Oracle ---
+            echo '🩺 Probando conexión a Oracle Database (10.50.31.10:1521/orclpdb)...' &&
+            tnsping //10.50.31.10:1521/orclpdb || true &&
+
+            # --- Desplegar Laravel ---
             cd backend &&
             composer install --no-interaction --prefer-dist --optimize-autoloader &&
             php artisan config:clear &&
             php artisan cache:clear &&
-            php artisan migrate --force
+            php artisan optimize:clear &&
+            php artisan config:cache &&
+            php artisan migrate --force &&
+            php artisan tinker --execute=\"DB::connection()->getPdo(); echo '✅ Conectado correctamente a orclpdb';\"
           "
 
       - name: Validar conexión Oracle (Health Check)
         run: |
-          echo "🩺 Verificando conexión a Oracle (post-deploy)..."
-          # Endpoint ya creado en tu app: /oracle-test
+          echo "🩺 Verificando conexión HTTP a Oracle (post-deploy)..."
           RESPONSE=$(curl -s http://10.50.31.23/oracle-test || true)
           echo "🔍 Respuesta: $RESPONSE"
           echo "$RESPONSE" | grep -q "Conectado a Oracle correctamente" \
