@@ -1,0 +1,336 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+
+
+body {
+  font-family: 'Open Sans', sans-serif;
+  background: linear-gradient(135deg, #f5f9fc 0%, #ecf4f9 100%);
+  min-height: 100vh;
+  margin: 0;
+  padding: 20px;
+  position: relative;
+  overflow-x: hidden;
+  color: #333;
+}
+
+
+.section-header {
+  margin-bottom: 20px;
+  text-align: center;
+  position: relative;
+}
+
+.section-header h2 {
+  color: #2c6fb0;
+  font-size: 1.8rem;
+  font-weight: 600;
+  margin: 0;
+  padding: 12px 25px;
+  display: inline-block;
+  background-color: #f0f8ff;
+  border-radius: 30px;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+  position: relative;
+  z-index: 1;
+}
+
+.section-header::after {
+  content: '';
+  position: absolute;
+  height: 2px;
+  width: 100%;
+  background: linear-gradient(to right, transparent, #4a90e2, transparent);
+  top: 50%;
+  left: 0;
+  z-index: 0;
+}
+
+.cuadro-lista-usuarios {
+  background: white;
+  border-radius: var(--border-radius);
+  box-shadow: var(--box-shadow);
+  padding: 25px;
+  margin-bottom: 20px;
+}
+
+.lista-header {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 15px;
+}
+
+.lista-title {
+  color: #2c6fb0;
+  font-size: 1.4rem;
+  font-weight: 600;
+  margin: 0 0 15px 0;
+  padding: 10px 15px;
+  text-align: center;
+  background: linear-gradient(135deg, #e8f4ff, #f0f8ff);
+  border-radius: 8px;
+  border-bottom: 3px solid #4a90e2;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+.lista-botones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 10px;
+}
+
+.form-usuario {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  margin-bottom: 25px;
+  align-items: center;
+  background: white;
+  padding: 20px;
+  border-radius: var(--border-radius);
+  box-shadow: var(--box-shadow);
+}
+
+.input-usuario {
+  padding: 10px 15px;
+  border: 1px solid #ddd;
+  border-radius: var(--border-radius);
+  font-size: 14px;
+  flex: 1;
+  min-width: 200px;
+  transition: var(--transition);
+  background: white;
+  color: var(--text-primary);
+}
+
+.input-usuario:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  outline: none;
+}
+
+.input-usuario::placeholder {
+  color: var(--text-secondary);
+  opacity: 0.7;
+}
+
+.btn-guardar {
+  background: linear-gradient(135deg, #4a90e2, #357abd);
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  font-weight: 600;
+  margin-right: 10px;
+  transition: all 0.3s;
+  box-shadow: 0 2px 6px rgba(74, 144, 226, 0.3);
+}
+
+.btn-guardar:hover {
+  background: linear-gradient(135deg, #357abd, #2868a8);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(74, 144, 226, 0.4);
+}
+
+.btn-editar {
+  background: linear-gradient(135deg, #3498db, #2980b9);
+  color: white;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 20px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.3s;
+  box-shadow: 0 2px 5px rgba(52, 152, 219, 0.3);
+  min-width: 90px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 5px;
+  font-size: 13px;
+}
+
+.btn-editar:hover {
+  background: linear-gradient(135deg, #2980b9, #2573a7);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(52, 152, 219, 0.4);
+}
+
+.btn-eliminar {
+  background: linear-gradient(135deg, #e74c3c, #c0392b);
+  color: white;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 20px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.3s;
+  box-shadow: 0 2px 5px rgba(231, 76, 60, 0.3);
+  min-width: 90px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 5px;
+  font-size: 13px;
+}
+
+.btn-cancelar {
+  background: linear-gradient(135deg, #6c757d, #5a6268);
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.3s;
+  box-shadow: 0 2px 6px rgba(108, 117, 125, 0.3);
+}
+
+.btn-cancelar:hover {
+  background: linear-gradient(135deg, #5a6268, #4e555b);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(108, 117, 125, 0.4);
+}
+
+.tabla-usuarios {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 20px;
+  background: white;
+  border-radius: var(--border-radius);
+  overflow: hidden;
+  box-shadow: var(--box-shadow);
+}
+
+.tabla-usuarios th {
+  background: linear-gradient(to right, #4a90e2, #5f9ee9);
+  color: white;
+  padding: 14px 18px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 15px;
+  position: relative;
+}
+
+.tabla-usuarios th:first-child {
+  border-top-left-radius: 8px;
+}
+
+.tabla-usuarios th:last-child {
+  border-top-right-radius: 8px;
+}
+
+.tabla-usuarios td {
+  padding: 14px 18px;
+  border-bottom: 1px solid #eaeaea;
+  color: #333;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.tabla-usuarios tr:last-child td {
+  border-bottom: none;
+}
+
+.tabla-usuarios tr:last-child td:first-child {
+  border-bottom-left-radius: 8px;
+}
+
+.tabla-usuarios tr:last-child td:last-child {
+  border-bottom-right-radius: 8px;
+}
+
+.tabla-usuarios tr:nth-child(even) {
+  background-color: #f9f9f9;
+}
+
+.tabla-usuarios tr:hover td {
+  background-color: #f0f7ff;
+  transform: scale(1.005);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+.mensaje-error {
+  color: #991b1b;
+  background-color: #fee2e2;
+  border-left: 3px solid var(--danger-color);
+  padding: 12px 15px;
+  border-radius: var(--border-radius);
+  margin: 15px 0;
+}
+
+.mensaje-exito {
+  color: #065f46;
+  background-color: #d1fae5;
+  border-left: 3px solid var(--success-color);
+  padding: 12px 15px;
+  border-radius: var(--border-radius);
+  margin: 15px 0;
+}
+
+.acciones-cell {
+  padding: 8px 15px !important;
+  min-width: 220px;
+}
+
+.acciones-container {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: nowrap;
+}
+
+.btn-icon {
+  margin-right: 5px;
+  font-size: 14px;
+}
+
+@media (max-width: 768px) {
+  body {
+    padding: 15px;
+  }
+
+  .form-usuario {
+    padding: 15px;
+    margin-bottom: 20px;
+  }
+
+  .input-usuario {
+    min-width: 100%;
+    font-size: 14px;
+    padding: 10px;
+  }
+
+  .tabla-usuarios {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  .btn-guardar,
+  .btn-cancelar {
+    width: 100%;
+    margin: 5px 0;
+    padding: 10px 15px;
+  }
+  
+  .acciones-container {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    width: 100%;
+  }
+  
+  .btn-editar,
+  .btn-eliminar {
+    min-width: 80px;
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+
+  h2 {
+    font-size: 1.5rem;
+    margin-bottom: 1rem;
+  }
+}
