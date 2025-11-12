@@ -1,0 +1,202 @@
+name: CI/CD OracleApp - HybridFlow
+
+on:
+  push:
+    branches:
+      - pablo-dev
+      - luis-dev
+      - develop
+      - main
+
+concurrency:
+  group: oracleapp-${{ github.ref }}
+  cancel-in-progress: true
+
+# =========================================================
+# 1️⃣ BUILD, TEST & QUALITY CHECK
+# =========================================================
+jobs:
+  build-test:
+    name: Build, Test & Quality Check
+    runs-on: self-hosted
+
+    steps:
+      # ============================
+      # 🔹 CÓDIGO FUENTE
+      # ============================
+      - name: Checkout del código
+        uses: actions/checkout@v4
+
+      - name: Mostrar entorno del runner
+        run: |
+          echo "✅ Runner activo: $(hostname)"
+          uname -a
+
+      # ============================
+      # 🔹 FRONTEND (React)
+      # ============================
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18.x'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Instalar dependencias frontend
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Ejecutar pruebas Jest del frontend
+        env:
+          CI: true
+        working-directory: ./frontend
+        run: npm test -- --watchAll=false
+
+      # ============================
+      # 🔹 BACKEND (Laravel / PHP)
+      # ============================
+      - name: Verificar PHP y Composer
+        run: |
+          set -e
+          php -v
+          if ! command -v composer >/dev/null 2>&1; then
+            echo "🛠 Instalando Composer..."
+            EXPECTED_SIGNATURE="$(wget -q -O - https://composer.github.io/installer.sig)"
+            php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
+            ACTUAL_SIGNATURE="$(php -r "echo hash_file('sha384', 'composer-setup.php');")"
+            if [ "$EXPECTED_SIGNATURE" != "$ACTUAL_SIGNATURE" ]; then
+              echo '❌ ERROR: Instalador de Composer corrupto'; rm composer-setup.php; exit 1
+            fi
+            sudo php composer-setup.php --install-dir=/usr/local/bin --filename=composer
+            rm composer-setup.php
+          fi
+          composer --version
+
+      - name: Caché de Composer
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.composer/cache/files
+            backend/vendor
+          key: composer-${{ hashFiles('backend/composer.lock') }}
+          restore-keys: |
+            composer-
+
+      - name: Instalar dependencias backend
+        working-directory: ./backend
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Preparar entorno Laravel (.env y APP_KEY)
+        working-directory: ./backend
+        run: |
+          set -e
+          if [ ! -f .env ]; then
+            cp .env.example .env || true
+          fi
+          php artisan key:generate --force
+
+      - name: Ejecutar pruebas backend (PHPUnit)
+        working-directory: ./backend
+        run: |
+          if ls tests/Feature/*.php >/dev/null 2>&1 || ls tests/Unit/*.php >/dev/null 2>&1; then
+            php artisan test --no-interaction
+          else
+            echo "ℹ️ No hay pruebas en Laravel, se omite este paso."
+          fi
+
+      # ============================
+      # 🔹 PRUEBAS DE CALIDAD
+      # ============================
+      - name: Analizar calidad del código PHP (Laravel)
+        working-directory: ./backend
+        run: |
+          composer require --dev phpstan/phpstan
+          vendor/bin/phpstan analyse --level=5 app || true
+
+      - name: Analizar calidad del código React (ESLint)
+        working-directory: ./frontend
+        run: |
+          npm install eslint --save-dev
+          npx eslint src || true
+
+
+# =========================================================
+# 2️⃣ DESPLIEGUE AUTOMÁTICO - ENTORNO DEV (Proxmox)
+# =========================================================
+  deploy-dev:
+    name: Deploy to Development (Proxmox)
+    needs: build-test
+    if: github.ref == 'refs/heads/develop'
+    runs-on: self-hosted
+
+    steps:
+      - name: Desplegar aplicación en entorno DEV (Ubuntu Proxmox)
+        run: |
+          echo "🚀 Desplegando en VM Ubuntu (Proxmox - 10.50.31.23)..."
+          ssh ubuntu@10.50.31.23 "
+            cd /var/www/html/HybridFlow-OracleApp &&
+            sudo chown -R ubuntu:ubuntu /var/www/html/HybridFlow-OracleApp &&
+            git fetch origin develop &&
+            git reset --hard origin/develop &&
+            git pull origin develop &&
+            cd backend &&
+            composer install --no-interaction --prefer-dist --optimize-autoloader &&
+            php artisan migrate --force &&
+            php artisan config:clear &&
+            php artisan cache:clear &&
+            echo '✅ Despliegue completado en DEV (Proxmox)'
+          "
+
+      - name: Validar conexión Oracle (Health Check)
+        run: |
+          echo "🩺 Verificando conexión a Oracle..."
+          RESPONSE=$(curl -s http://10.50.31.23/oracle-test || true)
+          echo "🔍 Respuesta: $RESPONSE"
+
+          if echo "$RESPONSE" | grep -q "Conectado a Oracle correctamente"; then
+            echo "✅ Conexión a Oracle verificada con éxito."
+          else
+            echo "❌ Error: No se pudo validar la conexión con Oracle."
+            exit 1
+          fi
+
+
+# =========================================================
+# 3️⃣ DESPLIEGUE AUTOMÁTICO - ENTORNO PROD (VMware)
+# =========================================================
+  deploy-prod:
+    name: Deploy to Production (VMware)
+    needs: build-test
+    if: github.ref == 'refs/heads/main'
+    runs-on: self-hosted
+
+    steps:
+      - name: Desplegar aplicación en entorno PROD (Ubuntu VMware)
+        run: |
+          echo "🚀 Desplegando en VM Ubuntu (VMware - 137.0.30.7)..."
+          ssh ubuntu@137.0.30.7 "
+            cd /var/www/html/HybridFlow-OracleApp &&
+            sudo chown -R ubuntu:ubuntu /var/www/html/HybridFlow-OracleApp &&
+            git fetch origin main &&
+            git reset --hard origin/main &&
+            git pull origin main &&
+            cd backend &&
+            composer install --no-interaction --prefer-dist --optimize-autoloader &&
+            php artisan migrate --force &&
+            php artisan config:clear &&
+            php artisan cache:clear &&
+            echo '✅ Despliegue completado en PRODUCCIÓN (VMware)'
+          "
+
+      - name: Validar conexión Oracle (Health Check)
+        run: |
+          echo "🩺 Verificando conexión a Oracle (Producción)..."
+          RESPONSE=$(curl -s http://137.0.30.7/oracle-test || true)
+          echo "🔍 Respuesta: $RESPONSE"
+
+          if echo "$RESPONSE" | grep -q "Conectado a Oracle correctamente"; then
+            echo "✅ Conexión a Oracle verificada con éxito en PROD."
+          else
+            echo "❌ Error: No se pudo validar la conexión con Oracle en PROD."
+            exit 1
+          fi
