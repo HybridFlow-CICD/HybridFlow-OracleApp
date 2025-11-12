@@ -172,8 +172,7 @@ jobs:
           echo "$RESPONSE" | grep -q "Conectado a Oracle correctamente" \
             && echo "✅ Conexión a Oracle verificada con éxito en DEV." \
             || (echo "❌ Error: No se pudo validar la conexión con Oracle en DEV." && exit 1)
-
-
+            
   # =========================================================
   # DEPLOY PROD (solo si la rama es main)
   # =========================================================
