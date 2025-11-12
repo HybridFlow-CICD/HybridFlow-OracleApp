@@ -105,7 +105,7 @@ jobs:
           npx eslint src || true
 
   # =========================================================
-  # DEPLOY DEV (solo si la rama es develop)
+  # DEPLOY DEV (ramas: develop y pablo-dev)
   # =========================================================
   deploy-dev:
     name: Deploy to Development (Proxmox)
@@ -119,35 +119,41 @@ jobs:
           echo "🚀 Desplegando en VM Ubuntu (Proxmox - 10.50.31.23)..."
           ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 "
             set -e
+
+            echo '🧩 Preparando entorno PHP con soporte Oracle...'
+            sudo apt update -y &&
+            sudo apt install -y php-dev php-pear libaio1 unzip &&
+            if ! php -m | grep -q oci8; then
+              echo '⚙️ Instalando extensión OCI8 (instantclient)...'
+              sudo pecl install oci8 <<<'instantclient,/opt/oracle/instantclient' || true
+              echo 'extension=oci8.so' | sudo tee /etc/php/\$(php -r 'echo PHP_MAJOR_VERSION.\".\".PHP_MINOR_VERSION;')/cli/conf.d/20-oci8.ini
+            fi
+            echo '✅ Extensiones PHP activas:' && php -m | grep oci || echo '❌ OCI8 no encontrada'
+
+            echo '🚀 Actualizando código del proyecto...'
             cd /var/www/html/HybridFlow-OracleApp &&
             sudo chown -R ubuntu:ubuntu /var/www/html/HybridFlow-OracleApp &&
             git fetch origin develop &&
             git reset --hard origin/develop &&
             git pull origin develop &&
 
-            # --- Instalar y configurar driver OCI8 si no existe ---
-            echo '🧩 Verificando e instalando Oracle Instant Client y extensión OCI8...' &&
-            sudo apt update -y &&
-            sudo apt install -y php-dev php-pear libaio1 unzip &&
-            if ! php -m | grep -q oci8; then
-              sudo pecl install oci8 <<<'instantclient,/opt/oracle/instantclient' || true
-              echo 'extension=oci8.so' | sudo tee /etc/php/\$(php -r 'echo PHP_MAJOR_VERSION.\".\".PHP_MINOR_VERSION;')/cli/conf.d/20-oci8.ini
-            fi &&
-            php -m | grep oci &&
-
-            # --- Verificar conectividad Oracle ---
-            echo '🩺 Probando conexión a Oracle Database (10.50.31.10:1521/orclpdb)...' &&
-            tnsping //10.50.31.10:1521/orclpdb || true &&
-
-            # --- Desplegar Laravel ---
+            echo '🧹 Preparando backend Laravel...'
             cd backend &&
             composer install --no-interaction --prefer-dist --optimize-autoloader &&
+
             php artisan config:clear &&
             php artisan cache:clear &&
             php artisan optimize:clear &&
             php artisan config:cache &&
-            php artisan migrate --force &&
-            php artisan tinker --execute=\"DB::connection()->getPdo(); echo '✅ Conectado correctamente a orclpdb';\"
+
+            echo '🩺 Verificando conexión directa a Oracle (Tinker)...'
+            if php artisan tinker --execute=\"DB::connection()->getPdo(); echo '✅ Conectado correctamente a orclpdb';\"; then
+              echo '✅ Conexión exitosa, ejecutando migraciones...'
+              php artisan migrate --force
+            else
+              echo '❌ Falló la conexión a Oracle, no se ejecutarán migraciones.'
+              exit 1
+            fi
           "
 
       - name: Validar conexión Oracle (Health Check)
@@ -158,6 +164,7 @@ jobs:
           echo "$RESPONSE" | grep -q "Conectado a Oracle correctamente" \
             && echo "✅ Conexión a Oracle verificada con éxito en DEV." \
             || (echo "❌ Error: No se pudo validar la conexión con Oracle en DEV." && exit 1)
+
 
   # =========================================================
   # DEPLOY PROD (solo si la rama es main)
