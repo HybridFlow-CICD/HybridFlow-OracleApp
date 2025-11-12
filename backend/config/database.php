@@ -14,8 +14,8 @@ return [
     | you may use many connections at once using the Database library.
     |
     */
-
-    'default' => env('DB_CONNECTION', 'mysql'),
+    
+    'default' => env('DB_CONNECTION', 'oracle'),
 
     /*
     |--------------------------------------------------------------------------
@@ -92,18 +92,22 @@ return [
             // 'encrypt' => env('DB_ENCRYPT', 'yes'),
             // 'trust_server_certificate' => env('DB_TRUST_SERVER_CERTIFICATE', 'false'),
         ],
-        'oracle' => [
-    'driver'   => 'oci8',
-    'tns'      => env('DB_TNS', ''),
-    'host'     => env('DB_HOST', '10.50.31.10'),
-    'port'     => env('DB_PORT', '1521'),
-    'database' => env('DB_SERVICE_NAME', 'orclpdb'),
-    'username' => env('DB_USERNAME', 'GRUPO02'),
-    'password' => env('DB_PASSWORD', 'Grupo02*'),
-    'charset'  => env('DB_CHARSET', 'AL32UTF8'),
-    'prefix'   => env('DB_PREFIX', ''),
-],
 
+        'oracle' => [
+        'driver'         => 'oracle',
+        'tns'            => env('DB_TNS', ''),
+        'host'           => env('DB_HOST', '10.50.31.10'),
+        'port'           => env('DB_PORT', '1521'),
+        'database'       => env('DB_DATABASE', 'orclpdb'),
+        'service_name'   => env('DB_SERVICE_NAME', 'orclpdb'),
+        'username'       => env('DB_USERNAME', 'GRUPO02'),
+        'password'       => env('DB_PASSWORD', 'Grupo02+'),
+        'charset'        => env('DB_CHARSET', 'AL32UTF8'),
+        'prefix'         => env('DB_PREFIX', ''),
+        'prefix_schema'  => env('DB_SCHEMA_PREFIX', ''),
+        'edition'        => env('DB_EDITION', 'basic'),
+        'server_version' => env('DB_SERVER_VERSION', '19.3'),
+    ],
 
     ],
 
