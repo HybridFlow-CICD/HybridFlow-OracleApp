@@ -104,8 +104,7 @@ jobs:
           npm install eslint --save-dev
           npx eslint src || true
 
-
-   # =========================================================
+  # =========================================================
   # DEPLOY DEV (ramas: develop y pablo-dev)
   # =========================================================
   deploy-dev:
@@ -148,6 +147,13 @@ jobs:
               composer require yajra/laravel-oci8:^9.5 --no-interaction || true
             else
               echo '✅ Yajra OCI8 ya instalado.'
+            fi
+
+            # --- Verificar y agregar Provider automáticamente ---
+            echo '🧠 Verificando Provider Yajra en config/app.php...'
+            if ! grep -q 'Yajra\\\\Oci8\\\\Oci8ServiceProvider::class' config/app.php; then
+              echo '⚙️ Agregando Provider Oci8ServiceProvider a config/app.php'
+              sed -i '/Package Service Providers.../a\    Yajra\\\\Oci8\\\\Oci8ServiceProvider::class,' config/app.php
             fi
 
             php artisan config:clear &&
