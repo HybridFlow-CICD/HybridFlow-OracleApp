@@ -145,7 +145,7 @@ jobs:
             # --- Instalar paquete Laravel OCI8 (si no existe) ---
             if ! composer show | grep -q "yajra/laravel-oci8"; then
               echo '📦 Instalando Yajra OCI8 para Laravel...'
-              composer require yajra/laravel-oci8:"^8.0" --no-interaction
+              composer require yajra/laravel-oci8:"^9.5" --no-interaction
             else
               echo '✅ Yajra OCI8 ya instalado.'
             fi
