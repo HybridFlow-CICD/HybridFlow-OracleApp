@@ -110,7 +110,7 @@ jobs:
   deploy-dev:
     name: Deploy to Development (Proxmox)
     needs: build-test
-    if: github.ref == 'refs/heads/develop'
+    if: contains(fromJson('["refs/heads/develop", "refs/heads/pablo-dev"]'), github.ref)
     runs-on: self-hosted
 
     steps:
