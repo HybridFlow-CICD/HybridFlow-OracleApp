@@ -103,8 +103,7 @@ jobs:
         run: |
           npm install eslint --save-dev
           npx eslint src || true
-
-   # =========================================================
+  # =========================================================
   # DEPLOY DEV (ramas: develop y pablo-dev)
   # =========================================================
   deploy-dev:
@@ -141,20 +140,23 @@ jobs:
             cd backend &&
             composer install --no-interaction --prefer-dist --optimize-autoloader &&
 
-            # --- Instalar Yajra OCI8 ---
+            # --- Instalar Yajra OCI8 si no está ---
             if ! composer show | grep -q 'yajra/laravel-oci8'; then
+              echo '📦 Instalando Yajra OCI8 para Laravel...'
               composer require yajra/laravel-oci8:"^9.5" --no-interaction
+            else
+              echo '✅ Yajra OCI8 ya instalado.'
             fi
 
-            echo '🧠 Corrigiendo config/database.php (remueve edition => basic si existe)...'
-            sudo sed -i '/edition.*=>/d' config/database.php
-
+            # --- Limpiar y regenerar autoload ---
+            echo '🧠 Regenerando autoload y limpiando cachés Laravel...'
+            composer dump-autoload -o &&
             php artisan config:clear &&
             php artisan cache:clear &&
             php artisan optimize:clear &&
             php artisan config:cache &&
 
-            echo '🩺 Verificando conexión directa a Oracle (Tinker)...'
+            echo '🩺 Probando conexión directa a Oracle (Tinker)...'
             if php artisan tinker --execute=\"DB::connection()->getPdo(); echo '✅ Conectado correctamente a orclpdb';\"; then
               echo '✅ Conexión exitosa, ejecutando migraciones...'
               php artisan migrate --force
@@ -172,6 +174,7 @@ jobs:
           echo "$RESPONSE" | grep -q "Conectado a Oracle correctamente" \
             && echo "✅ Conexión a Oracle verificada con éxito en DEV." \
             || (echo "❌ Error: No se pudo validar la conexión con Oracle en DEV." && exit 1)
+
             
   # =========================================================
   # DEPLOY PROD (solo si la rama es main)
