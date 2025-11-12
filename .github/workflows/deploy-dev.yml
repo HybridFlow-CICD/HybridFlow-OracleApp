@@ -104,7 +104,7 @@ jobs:
           npm install eslint --save-dev
           npx eslint src || true
 
-  # =========================================================
+   # =========================================================
   # DEPLOY DEV (ramas: develop y pablo-dev)
   # =========================================================
   deploy-dev:
@@ -126,13 +126,8 @@ jobs:
             if ! php -m | grep -q oci8; then
               echo '⚙️ Instalando extensión OCI8 (instantclient)...'
               sudo pecl install oci8 <<<'instantclient,/opt/oracle/instantclient' || true
+              echo 'extension=oci8.so' | sudo tee /etc/php/\$(php -r 'echo PHP_MAJOR_VERSION.\".\".PHP_MINOR_VERSION;')/cli/conf.d/20-oci8.ini
             fi
-
-            # --- Forzar activación de oci8 globalmente ---
-            PHP_INI_PATH=\$(php --ini | grep 'Loaded Configuration' | awk '{print \$4}')
-            echo 'extension=oci8.so' | sudo tee /etc/php/\$(php -r 'echo PHP_MAJOR_VERSION.\".\".PHP_MINOR_VERSION;')/cli/conf.d/20-oci8.ini
-            echo 'extension=oci8.so' | sudo tee -a \$PHP_INI_PATH
-            sudo systemctl restart apache2 || true
             echo '✅ Extensiones PHP activas:' && php -m | grep oci || echo '❌ OCI8 no encontrada'
 
             echo '🚀 Actualizando código del proyecto...'
@@ -146,18 +141,13 @@ jobs:
             cd backend &&
             composer install --no-interaction --prefer-dist --optimize-autoloader &&
 
-            # --- Instalar paquete Laravel OCI8 ---
+            # --- Instalar Yajra OCI8 ---
             if ! composer show | grep -q 'yajra/laravel-oci8'; then
-              echo '📦 Instalando Yajra OCI8 para Laravel...'
-              composer require yajra/laravel-oci8:^9.5 --no-interaction || true
+              composer require yajra/laravel-oci8:"^9.5" --no-interaction
             fi
 
-            # --- Verificar y agregar Provider automáticamente ---
-            echo '🧠 Verificando Provider Yajra en config/app.php...'
-            if ! grep -q 'Yajra\\\\Oci8\\\\Oci8ServiceProvider::class' config/app.php; then
-              echo '⚙️ Agregando Provider Oci8ServiceProvider a config/app.php'
-              sed -i '/Package Service Providers.../a\    Yajra\\\\Oci8\\\\Oci8ServiceProvider::class,' config/app.php
-            fi
+            echo '🧠 Corrigiendo config/database.php (remueve edition => basic si existe)...'
+            sudo sed -i '/edition.*=>/d' config/database.php
 
             php artisan config:clear &&
             php artisan cache:clear &&
@@ -165,11 +155,8 @@ jobs:
             php artisan config:cache &&
 
             echo '🩺 Verificando conexión directa a Oracle (Tinker)...'
-            php -m | grep oci8 || (echo '❌ OCI8 no se cargó en PHP'; exit 1)
-
             if php artisan tinker --execute=\"DB::connection()->getPdo(); echo '✅ Conectado correctamente a orclpdb';\"; then
               echo '✅ Conexión exitosa, ejecutando migraciones...'
-              composer dump-autoload -o &&
               php artisan migrate --force
             else
               echo '❌ Falló la conexión a Oracle, no se ejecutarán migraciones.'
