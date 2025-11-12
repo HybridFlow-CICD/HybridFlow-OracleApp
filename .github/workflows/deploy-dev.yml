@@ -103,7 +103,8 @@ jobs:
         run: |
           npm install eslint --save-dev
           npx eslint src || true
-  # =========================================================
+ 
+            # =========================================================
   # DEPLOY DEV (ramas: develop y pablo-dev)
   # =========================================================
   deploy-dev:
@@ -140,6 +141,11 @@ jobs:
             cd backend &&
             composer install --no-interaction --prefer-dist --optimize-autoloader &&
 
+            # --- Corregir permisos de Laravel ---
+            echo '🔧 Corrigiendo permisos de storage y cache...'
+            sudo chown -R ubuntu:www-data storage bootstrap/cache
+            sudo chmod -R 775 storage bootstrap/cache
+
             # --- Instalar Yajra OCI8 si no está ---
             if ! composer show | grep -q 'yajra/laravel-oci8'; then
               echo '📦 Instalando Yajra OCI8 para Laravel...'
@@ -174,6 +180,7 @@ jobs:
           echo "$RESPONSE" | grep -q "Conectado a Oracle correctamente" \
             && echo "✅ Conexión a Oracle verificada con éxito en DEV." \
             || (echo "❌ Error: No se pudo validar la conexión con Oracle en DEV." && exit 1)
+
 
             
   # =========================================================
