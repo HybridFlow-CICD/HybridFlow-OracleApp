@@ -126,8 +126,13 @@ jobs:
             if ! php -m | grep -q oci8; then
               echo '⚙️ Instalando extensión OCI8 (instantclient)...'
               sudo pecl install oci8 <<<'instantclient,/opt/oracle/instantclient' || true
-              echo 'extension=oci8.so' | sudo tee /etc/php/\$(php -r 'echo PHP_MAJOR_VERSION.\".\".PHP_MINOR_VERSION;')/cli/conf.d/20-oci8.ini
             fi
+
+            # --- Forzar activación de oci8 globalmente ---
+            PHP_INI_PATH=\$(php --ini | grep 'Loaded Configuration' | awk '{print \$4}')
+            echo 'extension=oci8.so' | sudo tee /etc/php/\$(php -r 'echo PHP_MAJOR_VERSION.\".\".PHP_MINOR_VERSION;')/cli/conf.d/20-oci8.ini
+            echo 'extension=oci8.so' | sudo tee -a \$PHP_INI_PATH
+            sudo systemctl restart apache2 || true
             echo '✅ Extensiones PHP activas:' && php -m | grep oci || echo '❌ OCI8 no encontrada'
 
             echo '🚀 Actualizando código del proyecto...'
@@ -141,12 +146,10 @@ jobs:
             cd backend &&
             composer install --no-interaction --prefer-dist --optimize-autoloader &&
 
-            # --- Instalar paquete Laravel OCI8 (si no existe) ---
+            # --- Instalar paquete Laravel OCI8 ---
             if ! composer show | grep -q 'yajra/laravel-oci8'; then
-              echo '📦 Instalando Yajra OCI8 para Laravel (compatible con PHP 8.3)...'
+              echo '📦 Instalando Yajra OCI8 para Laravel...'
               composer require yajra/laravel-oci8:^9.5 --no-interaction || true
-            else
-              echo '✅ Yajra OCI8 ya instalado.'
             fi
 
             # --- Verificar y agregar Provider automáticamente ---
@@ -162,6 +165,8 @@ jobs:
             php artisan config:cache &&
 
             echo '🩺 Verificando conexión directa a Oracle (Tinker)...'
+            php -m | grep oci8 || (echo '❌ OCI8 no se cargó en PHP'; exit 1)
+
             if php artisan tinker --execute=\"DB::connection()->getPdo(); echo '✅ Conectado correctamente a orclpdb';\"; then
               echo '✅ Conexión exitosa, ejecutando migraciones...'
               composer dump-autoload -o &&
@@ -180,6 +185,7 @@ jobs:
           echo "$RESPONSE" | grep -q "Conectado a Oracle correctamente" \
             && echo "✅ Conexión a Oracle verificada con éxito en DEV." \
             || (echo "❌ Error: No se pudo validar la conexión con Oracle en DEV." && exit 1)
+
 
   # =========================================================
   # DEPLOY PROD (solo si la rama es main)
