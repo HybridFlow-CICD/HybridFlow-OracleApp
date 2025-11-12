@@ -147,6 +147,7 @@ jobs:
             echo '✅ Despliegue completado en DEV (Proxmox)'
           "
 
+
       - name: Validar conexión Oracle (Health Check)
         run: |
           echo "🩺 Verificando conexión a Oracle..."
@@ -188,6 +189,7 @@ jobs:
             echo '✅ Despliegue completado en PRODUCCIÓN (VMware)'
           "
 
+
       - name: Validar conexión Oracle (Health Check)
         run: |
           echo "🩺 Verificando conexión a Oracle (Producción)..."
@@ -200,3 +202,4 @@ jobs:
             echo "❌ Error: No se pudo validar la conexión con Oracle en PROD."
             exit 1
           fi
+
