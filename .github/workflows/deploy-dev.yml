@@ -147,7 +147,7 @@ jobs:
             echo '✅ Despliegue completado en DEV (Proxmox)'
           "
 
-<<<<<<< HEAD
+
       - name: Validar conexión Oracle (Health Check)
         run: |
           echo "🩺 Verificando conexión a Oracle..."
@@ -161,8 +161,6 @@ jobs:
             exit 1
           fi
 
-=======
->>>>>>> origin/pablo-dev
 
 # =========================================================
 # 3️⃣ DESPLIEGUE AUTOMÁTICO - ENTORNO PROD (VMware)
@@ -190,7 +188,7 @@ jobs:
             php artisan cache:clear &&
             echo '✅ Despliegue completado en PRODUCCIÓN (VMware)'
           "
-<<<<<<< HEAD
+
 
       - name: Validar conexión Oracle (Health Check)
         run: |
@@ -204,5 +202,4 @@ jobs:
             echo "❌ Error: No se pudo validar la conexión con Oracle en PROD."
             exit 1
           fi
-=======
->>>>>>> origin/pablo-dev
+
