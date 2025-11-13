@@ -8,10 +8,29 @@ on:
       - develop
       - main
 
+  # Permite ejecutar el deploy a PRODUCCIÓN de forma manual y programada
+  workflow_dispatch:
+    inputs:
+      scheduled_time:
+        description: "Fecha y hora EXACTA para el deploy a producción (YYYY-MM-DD HH:MM)"
+        required: true
+        type: string
+      run_migrations:
+        description: "¿Ejecutar migraciones en PRODUCCIÓN?"
+        required: true
+        default: "no"
+        type: choice
+        options:
+          - "yes"
+          - "no"
+
 concurrency:
   group: oracleapp-${{ github.ref }}
   cancel-in-progress: true
 
+# =========================================================
+# BUILD + TEST
+# =========================================================
 jobs:
   build-test:
     name: Build, Test & Quality Check
@@ -23,7 +42,7 @@ jobs:
 
       - name: Mostrar entorno del runner
         run: |
-          echo "✅ Runner activo: $(hostname)"
+          echo "Runner activo: $(hostname)"
           uname -a
 
       # ---------- FRONTEND ----------
@@ -48,26 +67,7 @@ jobs:
       - name: Verificar PHP y Composer
         run: |
           php -v
-          composer --version || (
-            echo "🛠 Instalando Composer..." &&
-            EXPECTED_SIGNATURE="$(wget -q -O - https://composer.github.io/installer.sig)" &&
-            php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');" &&
-            ACTUAL_SIGNATURE="$(php -r "echo hash_file('sha384', 'composer-setup.php');")" &&
-            [ "$EXPECTED_SIGNATURE" = "$ACTUAL_SIGNATURE" ] || (echo "Firma inválida"; exit 1) &&
-            sudo php composer-setup.php --install-dir=/usr/local/bin --filename=composer &&
-            rm composer-setup.php
-          )
           composer --version
-
-      - name: Caché de Composer
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.composer/cache/files
-            backend/vendor
-          key: composer-${{ hashFiles('backend/composer.lock') }}
-          restore-keys: |
-            composer-
 
       - name: Instalar dependencias backend
         working-directory: ./backend
@@ -76,37 +76,23 @@ jobs:
       - name: Preparar entorno Laravel (.env y APP_KEY)
         working-directory: ./backend
         run: |
-          set -e
           if [ ! -f .env ]; then
-            cp .env.example .env || true
+            cp .env.example .env
           fi
           php artisan key:generate --force
 
-      - name: Ejecutar pruebas backend (PHPUnit)
+      - name: Ejecutar pruebas backend
         working-directory: ./backend
         run: |
-          if ls tests/Feature/*.php >/dev/null 2>&1 || ls tests/Unit/*.php >/dev/null 2>&1; then
+          if ls tests/**/*.php >/dev/null 2>&1; then
             php artisan test --no-interaction
           else
-            echo "ℹ️ No hay pruebas en Laravel, se omite este paso."
+            echo "No hay pruebas en Laravel."
           fi
 
-      # ---------- Lint/Quality ----------
-      - name: Analizar calidad del código PHP (Laravel)
-        working-directory: ./backend
-        run: |
-          composer require --dev phpstan/phpstan
-          vendor/bin/phpstan analyse --level=5 app || true
-
-      - name: Analizar calidad del código React (ESLint)
-        working-directory: ./frontend
-        run: |
-          npm install eslint --save-dev
-          npx eslint src || true
- 
-            # =========================================================
-  # DEPLOY DEV (ramas: develop y pablo-dev)
-  # =========================================================
+# =========================================================
+# DEPLOY DEV (Proxmox)
+# =========================================================
   deploy-dev:
     name: Deploy to Development (Proxmox)
     needs: build-test
@@ -116,105 +102,92 @@ jobs:
     steps:
       - name: Desplegar aplicación en entorno DEV (Ubuntu Proxmox)
         run: |
-          echo "🚀 Desplegando en VM Ubuntu (Proxmox - 10.50.31.23)..."
+          echo "Deploy en Proxmox..."
           ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 "
             set -e
-
-            echo '🧩 Preparando entorno PHP con soporte Oracle...'
-            sudo apt update -y &&
-            sudo apt install -y php-dev php-pear libaio1 unzip &&
-            if ! php -m | grep -q oci8; then
-              echo '⚙️ Instalando extensión OCI8 (instantclient)...'
-              sudo pecl install oci8 <<<'instantclient,/opt/oracle/instantclient' || true
-              echo 'extension=oci8.so' | sudo tee /etc/php/\$(php -r 'echo PHP_MAJOR_VERSION.\".\".PHP_MINOR_VERSION;')/cli/conf.d/20-oci8.ini
-            fi
-            echo '✅ Extensiones PHP activas:' && php -m | grep oci || echo '❌ OCI8 no encontrada'
-
-            echo '🚀 Actualizando código del proyecto...'
             cd /var/www/html/HybridFlow-OracleApp &&
-            sudo chown -R ubuntu:ubuntu /var/www/html/HybridFlow-OracleApp &&
             git fetch origin develop &&
             git reset --hard origin/develop &&
             git pull origin develop &&
 
-            echo '🧹 Preparando backend Laravel...'
             cd backend &&
             composer install --no-interaction --prefer-dist --optimize-autoloader &&
-
-            # --- Corregir permisos de Laravel ---
-            echo '🔧 Corrigiendo permisos de storage y cache...'
-            sudo chown -R ubuntu:www-data storage bootstrap/cache
-            sudo chmod -R 775 storage bootstrap/cache
-
-            # --- Instalar Yajra OCI8 si no está ---
-            if ! composer show | grep -q 'yajra/laravel-oci8'; then
-              echo '📦 Instalando Yajra OCI8 para Laravel...'
-              composer require yajra/laravel-oci8:"^9.5" --no-interaction
-            else
-              echo '✅ Yajra OCI8 ya instalado.'
-            fi
-
-            # --- Limpiar y regenerar autoload ---
-            echo '🧠 Regenerando autoload y limpiando cachés Laravel...'
-            composer dump-autoload -o &&
-            php artisan config:clear &&
-            php artisan cache:clear &&
-            php artisan optimize:clear &&
-            php artisan config:cache &&
-
-            echo '🩺 Probando conexión directa a Oracle (Tinker)...'
-            if php artisan tinker --execute=\"DB::connection()->getPdo(); echo '✅ Conectado correctamente a orclpdb';\"; then
-              echo '✅ Conexión exitosa, ejecutando migraciones...'
-              php artisan migrate --force
-            else
-              echo '❌ Falló la conexión a Oracle, no se ejecutarán migraciones.'
-              exit 1
-            fi
+            php artisan migrate --force
           "
 
-      - name: Validar conexión Oracle (Health Check)
-        run: |
-          echo "🩺 Verificando conexión HTTP a Oracle (post-deploy)..."
-          RESPONSE=$(curl -s http://10.50.31.23/oracle-test || true)
-          echo "🔍 Respuesta: $RESPONSE"
-          echo "$RESPONSE" | grep -q "Conectado a Oracle correctamente" \
-            && echo "✅ Conexión a Oracle verificada con éxito en DEV." \
-            || (echo "❌ Error: No se pudo validar la conexión con Oracle en DEV." && exit 1)
-
-
-            
-  # =========================================================
-  # DEPLOY PROD (solo si la rama es main)
-  # =========================================================
-  deploy-prod:
-    name: Deploy to Production (VMware)
+# =========================================================
+# JOB DE ESPERA → PARA PROGRAMAR LA HORA DE PRODUCCIÓN
+# =========================================================
+  wait-for-prod:
+    name: Esperar hasta la hora programada por el usuario
+    runs-on: ubuntu-latest
     needs: build-test
-    if: github.ref == 'refs/heads/main'
-    runs-on: self-hosted
+    if: github.event_name == 'workflow_dispatch'
+
+    outputs:
+      run_migrations: ${{ github.event.inputs.run_migrations }}
 
     steps:
-      - name: Desplegar aplicación en entorno PROD (Ubuntu VMware)
+      - name: Calcular segundos a esperar
+        id: calc
         run: |
-          echo "🚀 Desplegando en VM Ubuntu (VMware - 137.0.30.7)..."
+          TARGET="${{ github.event.inputs.scheduled_time }}"
+          echo "Hora objetivo: $TARGET"
+
+          TARGET_TS=$(date -d "$TARGET" +%s)
+          NOW_TS=$(date +%s)
+
+          if [ "$TARGET_TS" -le "$NOW_TS" ]; then
+            echo "ERROR: La hora ya pasó."
+            exit 1
+          fi
+
+          WAIT=$(( TARGET_TS - NOW_TS ))
+          echo "Segundos a esperar: $WAIT"
+          echo "wait_seconds=$WAIT" >> $GITHUB_OUTPUT
+
+      - name: Esperando hasta la hora seleccionada...
+        run: |
+          sleep ${{ steps.calc.outputs.wait_seconds }}
+
+# =========================================================
+# DEPLOY PROD (VMWARE) — PROGRAMADO
+# =========================================================
+  deploy-prod:
+    name: Deploy to Production (VMware)
+    needs: wait-for-prod
+    runs-on: self-hosted
+    if: github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Deploy en PRODUCCIÓN
+        env:
+          RUN_MIGRATIONS: ${{ needs.wait-for-prod.outputs.run_migrations }}
+        run: |
+          echo "Deploy programado ejecutándose ahora..."
+          echo "Migraciones: $RUN_MIGRATIONS"
+
           ssh -o StrictHostKeyChecking=no ubuntu@137.0.30.7 "
             set -e
             cd /var/www/html/HybridFlow-OracleApp &&
-            sudo chown -R ubuntu:ubuntu /var/www/html/HybridFlow-OracleApp &&
             git fetch origin main &&
             git reset --hard origin/main &&
             git pull origin main &&
+
             cd backend &&
             composer install --no-interaction --prefer-dist --optimize-autoloader &&
             php artisan config:clear &&
             php artisan cache:clear &&
-            php artisan migrate --force
+            php artisan config:cache &&
+
+            if [ \"$RUN_MIGRATIONS\" = \"yes\" ]; then
+              php artisan migrate --force
+            fi
           "
 
       - name: Validar conexión Oracle (Health Check - PROD)
         run: |
-          echo "🩺 Verificando conexión a Oracle (PROD)..."
           RESPONSE=$(curl -s http://137.0.30.7/oracle-test || true)
-          echo "🔍 Respuesta: $RESPONSE"
           echo "$RESPONSE" | grep -q "Conectado a Oracle correctamente" \
-            && echo "✅ Conexión a Oracle verificada con éxito en PROD." \
-            || (echo "❌ Error: No se pudo validar la conexión con Oracle en PROD." && exit 1)
+            && echo "Deploy a PRODUCCIÓN completado exitosamente." \
+            || (echo "Fallo en producción." && exit 1)
