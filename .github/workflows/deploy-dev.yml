@@ -8,13 +8,13 @@ on:
       - develop
       - main
 
-  # Permite ejecutar deploy manual ingresando hora en Costa Rica
   workflow_dispatch:
     inputs:
       scheduled_time_cr:
         description: "Fecha y hora en COSTA RICA (YYYY-MM-DD HH:MM)"
         required: true
         type: string
+
       run_migrations:
         description: "¿Ejecutar migraciones en PRODUCCIÓN?"
         required: true
@@ -28,9 +28,9 @@ concurrency:
   group: oracleapp-${{ github.ref }}
   cancel-in-progress: true
 
-# =====================================================================
+# ======================================================
 # BUILD & TEST
-# =====================================================================
+# ======================================================
 jobs:
   build-test:
     name: Build, Test & Quality Check
@@ -45,7 +45,7 @@ jobs:
           echo "Runner activo: $(hostname)"
           uname -a
 
-      # ---------------- FRONTEND ----------------
+      # ---------- FRONTEND ----------
       - name: Configurar Node.js
         uses: actions/setup-node@v4
         with:
@@ -63,7 +63,7 @@ jobs:
         working-directory: ./frontend
         run: npm test -- --watchAll=false
 
-      # ---------------- BACKEND ----------------
+      # ---------- BACKEND ----------
       - name: Verificar PHP & Composer
         run: |
           php -v
@@ -90,9 +90,9 @@ jobs:
             echo "No hay pruebas en Laravel."
           fi
 
-# =====================================================================
-# DEPLOY A DESARROLLO (PROXMOX)
-# =====================================================================
+# ======================================================
+# DEPLOY DESARROLLO (PROXMOX)
+# ======================================================
   deploy-dev:
     name: Deploy to Development (Proxmox)
     needs: build-test
@@ -130,15 +130,14 @@ jobs:
 
             php artisan tinker --execute=\"DB::connection()->getPdo();\" &&
             echo 'Oracle OK en DEV.' ||
-
             (echo '❌ Oracle FAIL en DEV'; exit 1)
 
             php artisan migrate --force
           "
 
-# =====================================================================
-# ESPERAR HASTA LA HORA PROGRAMADA (FIX CR → UTC)
-# =====================================================================
+# ======================================================
+# ESPERAR HASTA LA HORA PROGRAMADA (FIX DEFINITIVO)
+# ======================================================
   wait-for-prod:
     name: Esperar hasta la hora programada
     runs-on: ubuntu-latest
@@ -149,42 +148,61 @@ jobs:
       run_migrations: ${{ github.event.inputs.run_migrations }}
 
     steps:
+
+      # ---------- Convertir CR → UTC ----------
       - name: Convertir hora CR → UTC correctamente
         id: convert
         run: |
-          CR_TIME="${{ github.event.inputs.scheduled_time_cr }}"
-          echo "Hora ingresada (CR): $CR_TIME"
+          CR_RAW="${{ github.event.inputs.scheduled_time_cr }}"
 
-          # Conversión REAL usando TZ de Costa Rica
-          UTC_TIME=$(TZ="America/Costa_Rica" date -d "$CR_TIME" --utc +"%Y-%m-%d %H:%M:%S")
+          # Limpiar caracteres invisibles
+          CR_TIME=$(echo "$CR_RAW" | tr -d '\r' | tr -d '"' | xargs)
+
+          echo "Hora ingresada (CR limpia): $CR_TIME"
+
+          # Convertir a UTC usando TZ de Costa Rica
+          if ! UTC_TIME=$(TZ="America/Costa_Rica" date -d "$CR_TIME" --utc +"%Y-%m-%d %H:%M:%S" 2>/dev/null); then
+            echo "❌ ERROR: No se pudo interpretar la fecha CR → '$CR_RAW'"
+            exit 1
+          fi
 
           echo "Hora convertida a UTC: $UTC_TIME"
           echo "utc_time=$UTC_TIME" >> $GITHUB_OUTPUT
 
+      # ---------- Calcular tiempo ----------
       - name: Calcular tiempo de espera
         id: calc
         run: |
-          TARGET="${{ steps.convert.outputs.utc_time }}"
-          echo "Hora objetivo UTC: $TARGET"
+          RAW="${{ steps.convert.outputs.utc_time }}"
+          TARGET=$(echo "$RAW" | tr -d '\r' | tr -d '"' | xargs)
 
-          TARGET_TS=$(date -u -d "$TARGET" +%s)
+          echo "Hora objetivo UTC final: $TARGET"
+
+          # Validar con date
+          if ! date -d "$TARGET" >/dev/null 2>&1; then
+            echo "❌ ERROR: Fecha UTC inválida → '$TARGET'"
+            exit 1
+          fi
+
+          TARGET_TS=$(date -d "$TARGET" +%s)
           NOW_TS=$(date -u +%s)
 
           if [ "$TARGET_TS" -le "$NOW_TS" ]; then
-            echo "ERROR: La hora indicada ya pasó."
+            echo "❌ ERROR: La hora indicada ya pasó."
             exit 1
           fi
 
           WAIT=$(( TARGET_TS - NOW_TS ))
+
           echo "Segundos de espera: $WAIT"
           echo "wait_seconds=$WAIT" >> $GITHUB_OUTPUT
 
       - name: Esperando...
         run: sleep ${{ steps.calc.outputs.wait_seconds }}
 
-# =====================================================================
-# DEPLOY A PRODUCCIÓN (VMWARE)
-# =====================================================================
+# ======================================================
+# DEPLOY PRODUCCIÓN (VMWARE)
+# ======================================================
   deploy-prod:
     name: Deploy to Production (VMware)
     needs: wait-for-prod
