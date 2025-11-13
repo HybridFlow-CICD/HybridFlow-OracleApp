@@ -8,11 +8,11 @@ on:
       - develop
       - main
 
-  # Permite ejecutar el deploy a PRODUCCIÓN de forma manual y programada
+  # Permite ejecutar el deploy manual a producción, con hora programada
   workflow_dispatch:
     inputs:
       scheduled_time:
-        description: "Fecha y hora EXACTA para el deploy a producción (YYYY-MM-DD HH:MM)"
+        description: "Fecha y hora EXACTA para ejecutar el deploy (YYYY-MM-DD HH:MM)"
         required: true
         type: string
       run_migrations:
@@ -28,9 +28,9 @@ concurrency:
   group: oracleapp-${{ github.ref }}
   cancel-in-progress: true
 
-# =========================================================
-# BUILD + TEST
-# =========================================================
+# =====================================================================================
+# BUILD & TEST
+# =====================================================================================
 jobs:
   build-test:
     name: Build, Test & Quality Check
@@ -45,7 +45,7 @@ jobs:
           echo "Runner activo: $(hostname)"
           uname -a
 
-      # ---------- FRONTEND ----------
+      # ---------------------- FRONTEND ----------------------
       - name: Configurar Node.js
         uses: actions/setup-node@v4
         with:
@@ -63,8 +63,8 @@ jobs:
         working-directory: ./frontend
         run: npm test -- --watchAll=false
 
-      # ---------- BACKEND ----------
-      - name: Verificar PHP y Composer
+      # ---------------------- BACKEND ----------------------
+      - name: Verificar PHP & Composer
         run: |
           php -v
           composer --version
@@ -73,7 +73,7 @@ jobs:
         working-directory: ./backend
         run: composer install --no-interaction --prefer-dist --optimize-autoloader
 
-      - name: Preparar entorno Laravel (.env y APP_KEY)
+      - name: Preparar entorno Laravel
         working-directory: ./backend
         run: |
           if [ ! -f .env ]; then
@@ -81,7 +81,7 @@ jobs:
           fi
           php artisan key:generate --force
 
-      - name: Ejecutar pruebas backend
+      - name: Ejecutar pruebas backend (PHPUnit)
         working-directory: ./backend
         run: |
           if ls tests/**/*.php >/dev/null 2>&1; then
@@ -90,9 +90,9 @@ jobs:
             echo "No hay pruebas en Laravel."
           fi
 
-# =========================================================
-# DEPLOY DEV (Proxmox)
-# =========================================================
+# =====================================================================================
+# DEPLOY A DESARROLLO (PROXMOX)
+# =====================================================================================
   deploy-dev:
     name: Deploy to Development (Proxmox)
     needs: build-test
@@ -100,26 +100,53 @@ jobs:
     runs-on: self-hosted
 
     steps:
-      - name: Desplegar aplicación en entorno DEV (Ubuntu Proxmox)
+      - name: Deploy en Proxmox (DEV)
         run: |
-          echo "Deploy en Proxmox..."
+          echo "🚀 Deploy en DEV (Proxmox - 10.50.31.23)..."
+
           ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 "
             set -e
+
             cd /var/www/html/HybridFlow-OracleApp &&
             git fetch origin develop &&
             git reset --hard origin/develop &&
             git pull origin develop &&
 
             cd backend &&
-            composer install --no-interaction --prefer-dist --optimize-autoloader &&
+
+            # ---------------- PERMISOS ----------------
+            sudo chown -R ubuntu:www-data storage bootstrap/cache
+            sudo chmod -R 775 storage bootstrap/cache
+
+            # ---------------- COMPOSER ----------------
+            composer install --no-interaction --prefer-dist --optimize-autoloader
+
+            # Instalar Yajra si vendor viene vacío
+            if ! composer show | grep -q 'yajra/laravel-oci8'; then
+              composer require yajra/laravel-oci8:"^9.5" --no-interaction
+            fi
+
+            # ---------------- LIMPIEZA ----------------
+            php artisan config:clear
+            php artisan cache:clear
+            php artisan optimize:clear
+            php artisan config:cache
+
+            # ---------------- VALIDAR ORACLE ----------------
+            php artisan tinker --execute=\"DB::connection()->getPdo();\" &&
+            echo 'Oracle conectado correctamente en DEV.' ||
+
+            (echo '❌ Error conectando a Oracle en DEV'; exit 1)
+
+            # ---------------- MIGRACIONES ----------------
             php artisan migrate --force
           "
 
-# =========================================================
-# JOB DE ESPERA → PARA PROGRAMAR LA HORA DE PRODUCCIÓN
-# =========================================================
+# =====================================================================================
+# ESPERAR HASTA LA HORA PROGRAMADA PARA PRODUCCIÓN
+# =====================================================================================
   wait-for-prod:
-    name: Esperar hasta la hora programada por el usuario
+    name: Esperar hasta la hora programada
     runs-on: ubuntu-latest
     needs: build-test
     if: github.event_name == 'workflow_dispatch'
@@ -128,7 +155,7 @@ jobs:
       run_migrations: ${{ github.event.inputs.run_migrations }}
 
     steps:
-      - name: Calcular segundos a esperar
+      - name: Calcular tiempo de espera
         id: calc
         run: |
           TARGET="${{ github.event.inputs.scheduled_time }}"
@@ -138,21 +165,20 @@ jobs:
           NOW_TS=$(date +%s)
 
           if [ "$TARGET_TS" -le "$NOW_TS" ]; then
-            echo "ERROR: La hora ya pasó."
+            echo "ERROR: La hora indicada ya pasó."
             exit 1
           fi
 
           WAIT=$(( TARGET_TS - NOW_TS ))
-          echo "Segundos a esperar: $WAIT"
+          echo "Segundos de espera: $WAIT"
           echo "wait_seconds=$WAIT" >> $GITHUB_OUTPUT
 
-      - name: Esperando hasta la hora seleccionada...
-        run: |
-          sleep ${{ steps.calc.outputs.wait_seconds }}
+      - name: Esperando...
+        run: sleep ${{ steps.calc.outputs.wait_seconds }}
 
-# =========================================================
-# DEPLOY PROD (VMWARE) — PROGRAMADO
-# =========================================================
+# =====================================================================================
+# DEPLOY A PRODUCCIÓN (VMWARE)
+# =====================================================================================
   deploy-prod:
     name: Deploy to Production (VMware)
     needs: wait-for-prod
@@ -160,34 +186,48 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
 
     steps:
-      - name: Deploy en PRODUCCIÓN
+      - name: Deploy a PRODUCCIÓN
         env:
           RUN_MIGRATIONS: ${{ needs.wait-for-prod.outputs.run_migrations }}
         run: |
-          echo "Deploy programado ejecutándose ahora..."
-          echo "Migraciones: $RUN_MIGRATIONS"
+          echo "⚡ Ejecutando deploy programado en PRODUCCIÓN..."
 
           ssh -o StrictHostKeyChecking=no ubuntu@137.0.30.7 "
             set -e
+
             cd /var/www/html/HybridFlow-OracleApp &&
             git fetch origin main &&
             git reset --hard origin/main &&
             git pull origin main &&
 
             cd backend &&
-            composer install --no-interaction --prefer-dist --optimize-autoloader &&
-            php artisan config:clear &&
-            php artisan cache:clear &&
-            php artisan config:cache &&
 
+            # ---------------- PERMISOS ----------------
+            sudo chown -R ubuntu:www-data storage bootstrap/cache
+            sudo chmod -R 775 storage bootstrap/cache
+
+            # ---------------- COMPOSER ----------------
+            composer install --no-interaction --prefer-dist --optimize-autoloader
+
+            # ---------------- LIMPIEZA ----------------
+            php artisan config:clear
+            php artisan cache:clear
+            php artisan optimize:clear
+            php artisan config:cache
+
+            # ---------------- VALIDACIÓN ORACLE ----------------
+            php artisan tinker --execute=\"DB::connection()->getPdo();\" ||
+            (echo '❌ Error conectando a Oracle en PROD'; exit 1)
+
+            # ---------------- MIGRACIONES OPCIONALES ----------------
             if [ \"$RUN_MIGRATIONS\" = \"yes\" ]; then
               php artisan migrate --force
             fi
           "
 
-      - name: Validar conexión Oracle (Health Check - PROD)
+      - name: Health Check Oracle
         run: |
           RESPONSE=$(curl -s http://137.0.30.7/oracle-test || true)
           echo "$RESPONSE" | grep -q "Conectado a Oracle correctamente" \
-            && echo "Deploy a PRODUCCIÓN completado exitosamente." \
-            || (echo "Fallo en producción." && exit 1)
+            && echo "✔ Deploy COMPLETADO en PRODUCCIÓN" \
+            || (echo "❌ Error validando conexión Oracle en PROD"; exit 1)
