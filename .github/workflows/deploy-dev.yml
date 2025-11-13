@@ -137,7 +137,7 @@ jobs:
           "
 
 # =====================================================================================
-# ESPERAR HASTA LA HORA PROGRAMADA (CONVERSIÓN CR → UTC)
+# ESPERAR HASTA LA HORA PROGRAMADA (CONVERSIÓN CR → UTC CORRECTA)
 # =====================================================================================
   wait-for-prod:
     name: Esperar hasta la hora programada
@@ -149,14 +149,19 @@ jobs:
       run_migrations: ${{ github.event.inputs.run_migrations }}
 
     steps:
-      - name: Convertir hora CR a UTC
+      - name: Convertir CR a UTC correctamente
         id: convert
         run: |
           CR_TIME="${{ github.event.inputs.scheduled_time_cr }}"
           echo "Hora ingresada (CR): $CR_TIME"
 
-          UTC_TIME=$(date -u -d "$CR_TIME +6 hours" +"%Y-%m-%d %H:%M:%S")
-          echo "Hora convertida a UTC: $UTC_TIME"
+          # Convertir usando TZ real Costa Rica
+          CR_ISO=$(TZ="America/Costa_Rica" date -d "$CR_TIME" +"%Y-%m-%dT%H:%M:%S")
+          echo "Interpretada en CR: $CR_ISO"
+
+          # Convertir a UTC sin cambiar la fecha
+          UTC_TIME=$(TZ="UTC" date -d "$CR_ISO" +"%Y-%m-%d %H:%M:%S")
+          echo "Hora convertida a UTC final: $UTC_TIME"
 
           echo "utc_time=$UTC_TIME" >> $GITHUB_OUTPUT
 
@@ -170,7 +175,7 @@ jobs:
           NOW_TS=$(date -u +%s)
 
           if [ "$TARGET_TS" -le "$NOW_TS" ]; then
-            echo "ERROR: La hora indicada ya pasó (o no se convirtió bien)."
+            echo "ERROR: La hora indicada ya pasó (o se interpretó mal)."
             exit 1
           fi
 
