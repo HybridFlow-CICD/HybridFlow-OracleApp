@@ -8,11 +8,11 @@ on:
       - develop
       - main
 
-  # Permite ejecutar el deploy manual a producción, con hora programada
+  # Permite ejecutar el deploy manual ingresando hora en Costa Rica (UTC-6)
   workflow_dispatch:
     inputs:
-      scheduled_time:
-        description: "Fecha y hora EXACTA para ejecutar el deploy (YYYY-MM-DD HH:MM)"
+      scheduled_time_cr:
+        description: "Fecha y hora en COSTA RICA (YYYY-MM-DD HH:MM)"
         required: true
         type: string
       run_migrations:
@@ -114,36 +114,30 @@ jobs:
 
             cd backend &&
 
-            # ---------------- PERMISOS ----------------
             sudo chown -R ubuntu:www-data storage bootstrap/cache
             sudo chmod -R 775 storage bootstrap/cache
 
-            # ---------------- COMPOSER ----------------
             composer install --no-interaction --prefer-dist --optimize-autoloader
 
-            # Instalar Yajra si vendor viene vacío
             if ! composer show | grep -q 'yajra/laravel-oci8'; then
-              composer require yajra/laravel-oci8:"^9.5" --no-interaction
+              composer require yajra/laravel-oci8:\"^9.5\" --no-interaction
             fi
 
-            # ---------------- LIMPIEZA ----------------
             php artisan config:clear
             php artisan cache:clear
             php artisan optimize:clear
             php artisan config:cache
 
-            # ---------------- VALIDAR ORACLE ----------------
             php artisan tinker --execute=\"DB::connection()->getPdo();\" &&
             echo 'Oracle conectado correctamente en DEV.' ||
 
             (echo '❌ Error conectando a Oracle en DEV'; exit 1)
 
-            # ---------------- MIGRACIONES ----------------
             php artisan migrate --force
           "
 
 # =====================================================================================
-# ESPERAR HASTA LA HORA PROGRAMADA PARA PRODUCCIÓN
+# ESPERAR HASTA LA HORA PROGRAMADA (CONVERSIÓN CR → UTC)
 # =====================================================================================
   wait-for-prod:
     name: Esperar hasta la hora programada
@@ -155,17 +149,28 @@ jobs:
       run_migrations: ${{ github.event.inputs.run_migrations }}
 
     steps:
+      - name: Convertir hora CR a UTC
+        id: convert
+        run: |
+          CR_TIME="${{ github.event.inputs.scheduled_time_cr }}"
+          echo "Hora ingresada (CR): $CR_TIME"
+
+          UTC_TIME=$(date -u -d "$CR_TIME +6 hours" +"%Y-%m-%d %H:%M:%S")
+          echo "Hora convertida a UTC: $UTC_TIME"
+
+          echo "utc_time=$UTC_TIME" >> $GITHUB_OUTPUT
+
       - name: Calcular tiempo de espera
         id: calc
         run: |
-          TARGET="${{ github.event.inputs.scheduled_time }}"
-          echo "Hora objetivo: $TARGET"
+          TARGET="${{ steps.convert.outputs.utc_time }}"
+          echo "Hora objetivo UTC: $TARGET"
 
           TARGET_TS=$(date -d "$TARGET" +%s)
-          NOW_TS=$(date +%s)
+          NOW_TS=$(date -u +%s)
 
           if [ "$TARGET_TS" -le "$NOW_TS" ]; then
-            echo "ERROR: La hora indicada ya pasó."
+            echo "ERROR: La hora indicada ya pasó (o no se convirtió bien)."
             exit 1
           fi
 
@@ -173,7 +178,7 @@ jobs:
           echo "Segundos de espera: $WAIT"
           echo "wait_seconds=$WAIT" >> $GITHUB_OUTPUT
 
-      - name: Esperando...
+      - name: Esperando hasta la hora programada...
         run: sleep ${{ steps.calc.outputs.wait_seconds }}
 
 # =====================================================================================
@@ -202,24 +207,19 @@ jobs:
 
             cd backend &&
 
-            # ---------------- PERMISOS ----------------
             sudo chown -R ubuntu:www-data storage bootstrap/cache
             sudo chmod -R 775 storage bootstrap/cache
 
-            # ---------------- COMPOSER ----------------
             composer install --no-interaction --prefer-dist --optimize-autoloader
 
-            # ---------------- LIMPIEZA ----------------
             php artisan config:clear
             php artisan cache:clear
             php artisan optimize:clear
             php artisan config:cache
 
-            # ---------------- VALIDACIÓN ORACLE ----------------
             php artisan tinker --execute=\"DB::connection()->getPdo();\" ||
             (echo '❌ Error conectando a Oracle en PROD'; exit 1)
 
-            # ---------------- MIGRACIONES OPCIONALES ----------------
             if [ \"$RUN_MIGRATIONS\" = \"yes\" ]; then
               php artisan migrate --force
             fi
