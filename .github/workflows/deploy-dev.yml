@@ -91,7 +91,7 @@ jobs:
             echo "ℹ️ No hay pruebas en Laravel, se omite este paso."
           fi
 
-      # ---------- Lint/Quality (suave) ----------
+      # ---------- Lint/Quality ----------
       - name: Analizar calidad del código PHP (Laravel)
         working-directory: ./backend
         run: |
@@ -103,9 +103,9 @@ jobs:
         run: |
           npm install eslint --save-dev
           npx eslint src || true
-
-  # =========================================================
-  # DEPLOY DEV (solo si la rama es develop)
+ 
+            # =========================================================
+  # DEPLOY DEV (ramas: develop y pablo-dev)
   # =========================================================
   deploy-dev:
     name: Deploy to Development (Proxmox)
@@ -119,28 +119,70 @@ jobs:
           echo "🚀 Desplegando en VM Ubuntu (Proxmox - 10.50.31.23)..."
           ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 "
             set -e
+
+            echo '🧩 Preparando entorno PHP con soporte Oracle...'
+            sudo apt update -y &&
+            sudo apt install -y php-dev php-pear libaio1 unzip &&
+            if ! php -m | grep -q oci8; then
+              echo '⚙️ Instalando extensión OCI8 (instantclient)...'
+              sudo pecl install oci8 <<<'instantclient,/opt/oracle/instantclient' || true
+              echo 'extension=oci8.so' | sudo tee /etc/php/\$(php -r 'echo PHP_MAJOR_VERSION.\".\".PHP_MINOR_VERSION;')/cli/conf.d/20-oci8.ini
+            fi
+            echo '✅ Extensiones PHP activas:' && php -m | grep oci || echo '❌ OCI8 no encontrada'
+
+            echo '🚀 Actualizando código del proyecto...'
             cd /var/www/html/HybridFlow-OracleApp &&
             sudo chown -R ubuntu:ubuntu /var/www/html/HybridFlow-OracleApp &&
             git fetch origin develop &&
             git reset --hard origin/develop &&
             git pull origin develop &&
+
+            echo '🧹 Preparando backend Laravel...'
             cd backend &&
             composer install --no-interaction --prefer-dist --optimize-autoloader &&
+
+            # --- Corregir permisos de Laravel ---
+            echo '🔧 Corrigiendo permisos de storage y cache...'
+            sudo chown -R ubuntu:www-data storage bootstrap/cache
+            sudo chmod -R 775 storage bootstrap/cache
+
+            # --- Instalar Yajra OCI8 si no está ---
+            if ! composer show | grep -q 'yajra/laravel-oci8'; then
+              echo '📦 Instalando Yajra OCI8 para Laravel...'
+              composer require yajra/laravel-oci8:"^9.5" --no-interaction
+            else
+              echo '✅ Yajra OCI8 ya instalado.'
+            fi
+
+            # --- Limpiar y regenerar autoload ---
+            echo '🧠 Regenerando autoload y limpiando cachés Laravel...'
+            composer dump-autoload -o &&
             php artisan config:clear &&
             php artisan cache:clear &&
-            php artisan migrate --force
+            php artisan optimize:clear &&
+            php artisan config:cache &&
+
+            echo '🩺 Probando conexión directa a Oracle (Tinker)...'
+            if php artisan tinker --execute=\"DB::connection()->getPdo(); echo '✅ Conectado correctamente a orclpdb';\"; then
+              echo '✅ Conexión exitosa, ejecutando migraciones...'
+              php artisan migrate --force
+            else
+              echo '❌ Falló la conexión a Oracle, no se ejecutarán migraciones.'
+              exit 1
+            fi
           "
 
       - name: Validar conexión Oracle (Health Check)
         run: |
-          echo "🩺 Verificando conexión a Oracle (post-deploy)..."
-          # Endpoint ya creado en tu app: /oracle-test
+          echo "🩺 Verificando conexión HTTP a Oracle (post-deploy)..."
           RESPONSE=$(curl -s http://10.50.31.23/oracle-test || true)
           echo "🔍 Respuesta: $RESPONSE"
           echo "$RESPONSE" | grep -q "Conectado a Oracle correctamente" \
             && echo "✅ Conexión a Oracle verificada con éxito en DEV." \
             || (echo "❌ Error: No se pudo validar la conexión con Oracle en DEV." && exit 1)
 
+
+            
   # =========================================================
   # DEPLOY PROD (solo si la rama es main)
   # =========================================================

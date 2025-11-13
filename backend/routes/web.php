@@ -16,3 +16,15 @@ use Illuminate\Support\Facades\Route;
 Route::get('/', function () {
     return view('welcome');
 });
+
+use Illuminate\Support\Facades\DB;
+
+Route::get('/oracle-test', function () {
+    try {
+        DB::connection()->getPdo();
+        return "Conectado a Oracle correctamente";
+    } catch (\Exception $e) {
+        return "Error de conexión Oracle: " . $e->getMessage();
+    }
+});
+
