@@ -200,8 +200,7 @@ jobs:
       - name: Esperando...
         run: sleep ${{ steps.calc.outputs.wait_seconds }}
 
-
-        # ======================================================
+# ======================================================
 # DEPLOY PRODUCCIÓN (VMWARE usando túnel SSH)
 # ======================================================
   deploy-prod:
@@ -217,7 +216,6 @@ jobs:
         run: |
           echo "⚡ Deploy en PRODUCCIÓN vía túnel SSH..."
 
-          # Entramos primero al Proxmox
           ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 << 'EOF'
             
             echo "➡ Conectando a VMware por túnel (localhost:42222)..."
@@ -251,8 +249,15 @@ jobs:
             "
           EOF
 
-      - name: Health Check Oracle (via Proxmox → VMware)
+      - name: Health Check Oracle (Proxmox → VMware interno)
         run: |
-          ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 "curl -s http://137.0.30.7/oracle-test" | grep -q 'Conectado a Oracle correctamente' \
-            && echo '✔ Deploy COMPLETADO en PRODUCCIÓN (vía túnel)' \
-            || (echo '❌ Error conexión Oracle PROD'; exit 1)
+          ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 "
+            echo '➡ Ejecutando health check dentro de la VM Laravel...';
+
+            ssh -p 42222 -o StrictHostKeyChecking=no ubuntu@localhost \
+              'curl -s http://127.0.0.1/oracle-test' \
+              | grep -q \"Conectado a Oracle correctamente\" \
+              && echo \"✔ Oracle OK en PRODUCCIÓN\" \
+              || (echo \"❌ Error: Oracle NO responde en PRODUCCIÓN\"; exit 1)
+          "
+
