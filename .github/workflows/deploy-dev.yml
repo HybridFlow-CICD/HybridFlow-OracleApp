@@ -250,8 +250,8 @@ jobs:
             "
           EOF
 
-      - name: Health Check Oracle (via Proxmox → túnel)
+      - name: Health Check Oracle (via Proxmox → VMware)
         run: |
-          ssh ubuntu@10.50.31.23 "curl -s http://localhost:42222/oracle-test" | grep -q "Conectado a Oracle correctamente" \
-            && echo "✔ Deploy COMPLETADO en PRODUCCIÓN (vía túnel)" \
-            || (echo "❌ Error conexión Oracle PROD"; exit 1)
+          ssh ubuntu@10.50.31.23 "curl -s http://137.0.30.7/oracle-test" | grep -q 'Conectado a Oracle correctamente' \
+            && echo '✔ Deploy COMPLETADO en PRODUCCIÓN (vía túnel)' \
+            || (echo '❌ Error conexión Oracle PROD'; exit 1)
