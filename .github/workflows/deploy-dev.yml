@@ -200,7 +200,8 @@ jobs:
       - name: Esperando...
         run: sleep ${{ steps.calc.outputs.wait_seconds }}
 
-# ======================================================
+
+        # ======================================================
 # DEPLOY PRODUCCIÓN (VMWARE usando túnel SSH)
 # ======================================================
   deploy-prod:
@@ -252,6 +253,6 @@ jobs:
 
       - name: Health Check Oracle (via Proxmox → VMware)
         run: |
-          ssh ubuntu@10.50.31.23 "curl -s http://137.0.30.7/oracle-test" | grep -q 'Conectado a Oracle correctamente' \
+          ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 "curl -s http://137.0.30.7/oracle-test" | grep -q 'Conectado a Oracle correctamente' \
             && echo '✔ Deploy COMPLETADO en PRODUCCIÓN (vía túnel)' \
             || (echo '❌ Error conexión Oracle PROD'; exit 1)
