@@ -201,52 +201,57 @@ jobs:
         run: sleep ${{ steps.calc.outputs.wait_seconds }}
 
 # ======================================================
-# DEPLOY PRODUCCIÓN (VMWARE)
+# DEPLOY PRODUCCIÓN (VMWARE usando túnel SSH)
 # ======================================================
   deploy-prod:
-    name: Deploy to Production (VMware)
+    name: Deploy to Production (VMware via SSH Tunnel)
     needs: wait-for-prod
     runs-on: self-hosted
     if: github.event_name == 'workflow_dispatch'
 
     steps:
-      - name: Deploy a PRODUCCIÓN
+      - name: Deploy a PRODUCCIÓN (via túnel)
         env:
           RUN_MIGRATIONS: ${{ needs.wait-for-prod.outputs.run_migrations }}
         run: |
-          echo "⚡ Deploy en PRODUCCIÓN..."
+          echo "⚡ Deploy en PRODUCCIÓN vía túnel SSH..."
 
-          ssh -o StrictHostKeyChecking=no ubuntu@137.0.30.7 "
-            set -e
+          # Entramos primero al Proxmox
+          ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 << 'EOF'
+            
+            echo "➡ Conectando a VMware por túnel (localhost:42222)..."
 
-            cd /var/www/html/HybridFlow-OracleApp &&
-            git fetch origin main &&
-            git reset --hard origin/main &&
-            git pull origin main &&
+            ssh -p 42222 -o StrictHostKeyChecking=no ubuntu@localhost "
+              set -e
 
-            cd backend &&
+              cd /var/www/html/HybridFlow-OracleApp &&
+              git fetch origin main &&
+              git reset --hard origin/main &&
+              git pull origin main &&
 
-            sudo chown -R ubuntu:www-data storage bootstrap/cache
-            sudo chmod -R 775 storage bootstrap/cache
+              cd backend &&
 
-            composer install --no-interaction --prefer-dist --optimize-autoloader
+              sudo chown -R ubuntu:www-data storage bootstrap/cache
+              sudo chmod -R 775 storage bootstrap/cache
 
-            php artisan config:clear
-            php artisan cache:clear
-            php artisan optimize:clear
-            php artisan config:cache
+              composer install --no-interaction --prefer-dist --optimize-autoloader
 
-            php artisan tinker --execute=\"DB::connection()->getPdo();\" ||
-            (echo '❌ Oracle FAIL en PROD'; exit 1)
+              php artisan config:clear
+              php artisan cache:clear
+              php artisan optimize:clear
+              php artisan config:cache
 
-            if [ \"$RUN_MIGRATIONS\" = \"yes\" ]; then
-              php artisan migrate --force
-            fi
-          "
+              php artisan tinker --execute=\"DB::connection()->getPdo();\" ||
+              (echo '❌ Oracle FAIL en PROD'; exit 1)
 
-      - name: Health Check Oracle
+              if [ \"$RUN_MIGRATIONS\" = \"yes\" ]; then
+                php artisan migrate --force
+              fi
+            "
+          EOF
+
+      - name: Health Check Oracle (via Proxmox → túnel)
         run: |
-          RESPONSE=$(curl -s http://137.0.30.7/oracle-test || true)
-          echo "$RESPONSE" | grep -q "Conectado a Oracle correctamente" \
-            && echo "✔ Deploy COMPLETADO en PRODUCCIÓN" \
+          ssh ubuntu@10.50.31.23 "curl -s http://localhost:42222/oracle-test" | grep -q "Conectado a Oracle correctamente" \
+            && echo "✔ Deploy COMPLETADO en PRODUCCIÓN (vía túnel)" \
             || (echo "❌ Error conexión Oracle PROD"; exit 1)
