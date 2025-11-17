@@ -219,7 +219,6 @@ jobs:
         run: |
           echo "⚡ Deploy en PRODUCCIÓN vía túnel SSH..."
 
-          # Conexión a PROXMOX
           ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 << 'EOF'
 
             echo "➡ Conectando a VMware usando el túnel reverse (localhost:43000)..."
@@ -247,8 +246,9 @@ jobs:
               php artisan config:cache
 
               echo '➡ Probando conexión a Oracle PROD...'
-              php artisan tinker --execute="DB::connection()->getPdo();" ||
-              (echo '❌ Oracle FAIL en PROD'; exit 1)
+
+              php artisan tinker --execute='DB::connection()->getPdo();' \
+                || { echo \"❌ Oracle FAIL en PROD\"; exit 1; }
 
               if [ \"$RUN_MIGRATIONS\" = \"yes\" ]; then
                 php artisan migrate --force
