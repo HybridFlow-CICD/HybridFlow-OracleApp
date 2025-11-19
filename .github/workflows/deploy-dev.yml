@@ -255,7 +255,7 @@ jobs:
 
               DUMP_NAME=\"hybridflow_\$(date +\"%Y%m%d_%H%M%S\")\"
 
-              ssh -o StrictHostKeyChecking=no Administrator@137.0.30.3 \"powershell -Command \\\"
+              ssh -o StrictHostKeyChecking=no Administrador@137.0.30.3 \"powershell -Command \\\"
                 expdp GRUPO02/Grupo02* DIRECTORY=DATA_PUMP_DIR DUMPFILE=$DUMP_NAME.dmp LOGFILE=$DUMP_NAME.log SCHEMAS=GRUPO02 COMPRESSION=ALL
               \\\"
               \" || { echo \"❌ ERROR ejecutando expdp en Windows\"; exit 1; }
@@ -263,11 +263,11 @@ jobs:
               echo \"⬇ Descargando dump desde Windows...\"
 
               scp -o StrictHostKeyChecking=no \
-                Administrator@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/$DUMP_NAME.dmp\" \
+                Administrador@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/$DUMP_NAME.dmp\" \
                 \"\$BACKUP_DIR/$DUMP_NAME.dmp\" || exit 1
 
               scp -o StrictHostKeyChecking=no \
-                Administrator@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/$DUMP_NAME.log\" \
+                Administrador@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/$DUMP_NAME.log\" \
                 \"\$BACKUP_DIR/$DUMP_NAME.log\" || exit 1
 
               echo \"✔ Backup Oracle completado correctamente\"
