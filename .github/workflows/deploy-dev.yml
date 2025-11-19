@@ -49,8 +49,8 @@ jobs:
       - name: Configurar Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18.x'
-          cache: 'npm'
+          node-version: "18.x"
+          cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
       - name: Instalar dependencias frontend
@@ -90,9 +90,9 @@ jobs:
             echo "No hay pruebas en Laravel."
           fi
 
-# ======================================================
-# DEPLOY DESARROLLO (PROXMOX)
-# ======================================================
+  # ======================================================
+  # DEPLOY DESARROLLO (PROXMOX)
+  # ======================================================
   deploy-dev:
     name: Deploy to Development (Proxmox)
     needs: build-test
@@ -135,9 +135,9 @@ jobs:
             php artisan migrate --force
           "
 
-# ======================================================
-# ESPERAR HASTA LA HORA PROGRAMADA (FIX DEFINITIVO)
-# ======================================================
+  # ======================================================
+  # ESPERAR HASTA LA HORA PROGRAMADA (FIX DEFINITIVO)
+  # ======================================================
   wait-for-prod:
     name: Esperar hasta la hora programada
     runs-on: ubuntu-latest
@@ -148,7 +148,6 @@ jobs:
       run_migrations: ${{ github.event.inputs.run_migrations }}
 
     steps:
-
       # ---------- Convertir CR → UTC ----------
       - name: Convertir hora CR → UTC correctamente
         id: convert
@@ -198,9 +197,10 @@ jobs:
           echo "wait_seconds=$WAIT" >> $GITHUB_OUTPUT
 
       - name: Esperando...
-        run: sleep ${{ steps.calc.outputs.wait_seconds }}
+        run:
+          sleep ${{ steps.calc.outputs.wait_seconds }}
 
-          # ======================================================
+            # ======================================================
   # DEPLOY PRODUCCIÓN (VMWARE vía túnel SSH)
   # ======================================================
   deploy-prod:
@@ -210,7 +210,6 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
 
     steps:
-
       - name: Deploy a PRODUCCIÓN (via túnel SSH reverse)
         env:
           RUN_MIGRATIONS: ${{ needs.wait-for-prod.outputs.run_migrations }}
@@ -232,9 +231,9 @@ jobs:
               sudo chown -R ubuntu:ubuntu /var/backups/hybridflow
               sudo chmod -R 775 /var/backups/hybridflow
 
-              BACKUP_DIR=\"/var/backups/hybridflow/\$(date +\"%Y-%m-%d_%H-%M-%S\")\"
+              BACKUP_DIR=/var/backups/hybridflow/\$(date +%Y-%m-%d_%H-%M-%S)
               mkdir -p \"\$BACKUP_DIR\"
-              echo \"📁 Backup guardado en: \$BACKUP_DIR\"
+              echo \"📁 Backup en: \$BACKUP_DIR\"
 
               # ======================================================
               # 🗂 BACKUP FRONTEND
@@ -249,28 +248,21 @@ jobs:
               sudo cp -r /var/www/html/HybridFlow-OracleApp/backend \"\$BACKUP_DIR/backend\" || exit 1
 
               # ======================================================
-              # 🗄 BACKUP ORACLE (Windows Server)
+              # 🗄 BACKUP ORACLE DESDE WINDOWS
               # ======================================================
               echo \"🗄 Respaldando ORACLE...\"
+              DUMP_NAME=hybridflow_\$(date +%Y%m%d_%H%M%S)
 
-              DUMP_NAME=\"hybridflow_\$(date +\"%Y%m%d_%H%M%S\")\"
+              ssh -o StrictHostKeyChecking=no Administrador@137.0.30.3 \"
+                cd 'C:/app/oracle/product/19c/dbhome_1/BIN'
+                ./expdp.exe GRUPO02/Grupo02* DIRECTORY=DATA_PUMP_DIR DUMPFILE=${DUMP_NAME}.dmp LOGFILE=${DUMP_NAME}.log SCHEMAS=GRUPO02 COMPRESSION=ALL
+              \" || exit 1
 
-              ssh -o StrictHostKeyChecking=no Administrador@137.0.30.3 \"powershell -Command \\\"
-                expdp GRUPO02/Grupo02* DIRECTORY=DATA_PUMP_DIR DUMPFILE=$DUMP_NAME.dmp LOGFILE=$DUMP_NAME.log SCHEMAS=GRUPO02 COMPRESSION=ALL
-              \\\"
-              \" || { echo \"❌ ERROR ejecutando expdp en Windows\"; exit 1; }
+              echo \"⬇ Descargando dump...\"
+              scp -o StrictHostKeyChecking=no Administrador@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/\${DUMP_NAME}.dmp\" \"\$BACKUP_DIR/\${DUMP_NAME}.dmp\" || exit 1
+              scp -o StrictHostKeyChecking=no Administrador@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/\${DUMP_NAME}.log\" \"\$BACKUP_DIR/\${DUMP_NAME}.log\" || exit 1
 
-              echo \"⬇ Descargando dump desde Windows...\"
-
-              scp -o StrictHostKeyChecking=no \
-                Administrador@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/$DUMP_NAME.dmp\" \
-                \"\$BACKUP_DIR/$DUMP_NAME.dmp\" || exit 1
-
-              scp -o StrictHostKeyChecking=no \
-                Administrador@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/$DUMP_NAME.log\" \
-                \"\$BACKUP_DIR/$DUMP_NAME.log\" || exit 1
-
-              echo \"✔ Backup Oracle completado correctamente\"
+              echo \"✔ Backup Oracle completado\"
 
               # ======================================================
               # 🚀 DEPLOY LARAVEL
