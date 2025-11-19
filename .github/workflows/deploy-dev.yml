@@ -28,10 +28,11 @@ concurrency:
   group: oracleapp-${{ github.ref }}
   cancel-in-progress: true
 
-# ======================================================
-# BUILD & TEST
-# ======================================================
 jobs:
+
+  # ======================================================
+  # BUILD & TEST
+  # ======================================================
   build-test:
     name: Build, Test & Quality Check
     runs-on: self-hosted
@@ -44,6 +45,7 @@ jobs:
         run: |
           echo "Runner activo: $(hostname)"
           uname -a
+
       # ---------- FRONTEND ----------
       - name: Configurar Node.js
         uses: actions/setup-node@v4
@@ -67,6 +69,7 @@ jobs:
         run: |
           php -v
           composer --version
+
       - name: Instalar dependencias backend
         working-directory: ./backend
         run: composer install --no-interaction --prefer-dist --optimize-autoloader
@@ -78,6 +81,7 @@ jobs:
             cp .env.example .env
           fi
           php artisan key:generate --force
+
       - name: Ejecutar pruebas backend (PHPUnit)
         working-directory: ./backend
         run: |
@@ -86,9 +90,10 @@ jobs:
           else
             echo "No hay pruebas en Laravel."
           fi
-# ======================================================
-# DEPLOY DESARROLLO (PROXMOX)
-# ======================================================
+
+  # ======================================================
+  # DEPLOY DESARROLLO (PROXMOX)
+  # ======================================================
   deploy-dev:
     name: Deploy to Development (Proxmox)
     needs: build-test
@@ -106,24 +111,25 @@ jobs:
             git reset --hard origin/develop &&
             git pull origin develop &&
             cd backend &&
-            sudo chown -R ubuntu:www-data storage bootstrap/cache
-            sudo chmod -R 775 storage bootstrap/cache
-            composer install --no-interaction --prefer-dist --optimize-autoloader
+            sudo chown -R ubuntu:www-data storage bootstrap/cache &&
+            sudo chmod -R 775 storage bootstrap/cache &&
+            composer install --no-interaction --prefer-dist --optimize-autoloader &&
             if ! composer show | grep -q 'yajra/laravel-oci8'; then
               composer require yajra/laravel-oci8:\"^9.5\" --no-interaction
-            fi
-            php artisan config:clear
-            php artisan cache:clear
-            php artisan optimize:clear
-            php artisan config:cache
+            fi &&
+            php artisan config:clear &&
+            php artisan cache:clear &&
+            php artisan optimize:clear &&
+            php artisan config:cache &&
             php artisan tinker --execute=\"DB::connection()->getPdo();\" &&
             echo 'Oracle OK en DEV.' ||
             (echo '❌ Oracle FAIL en DEV'; exit 1)
             php artisan migrate --force
           "
-# ======================================================
-# ESPERAR HASTA LA HORA PROGRAMADA (FIX DEFINITIVO)
-# ======================================================
+
+  # ======================================================
+  # ESPERAR HASTA LA HORA PROGRAMADA
+  # ======================================================
   wait-for-prod:
     name: Esperar hasta la hora programada
     runs-on: ubuntu-latest
@@ -135,48 +141,40 @@ jobs:
 
     steps:
 
-      # ---------- Convertir CR → UTC ----------
-      - name: Convertir hora CR → UTC correctamente
+      - name: Convertir hora CR → UTC
         id: convert
         run: |
           CR_RAW="${{ github.event.inputs.scheduled_time_cr }}"
-          # Limpiar caracteres invisibles
           CR_TIME=$(echo "$CR_RAW" | tr -d '\r' | tr -d '"' | xargs)
-          echo "Hora ingresada (CR limpia): $CR_TIME"
-          # Convertir a UTC usando TZ de Costa Rica
+          echo "Hora ingresada (CR): $CR_TIME"
+
           if ! UTC_TIME=$(TZ="America/Costa_Rica" date -d "$CR_TIME" --utc +"%Y-%m-%d %H:%M:%S" 2>/dev/null); then
-            echo "❌ ERROR: No se pudo interpretar la fecha CR → '$CR_RAW'"
+            echo "❌ ERROR: No se pudo interpretar la fecha"
             exit 1
           fi
-          echo "Hora convertida a UTC: $UTC_TIME"
+
           echo "utc_time=$UTC_TIME" >> $GITHUB_OUTPUT
-      # ---------- Calcular tiempo ----------
+
       - name: Calcular tiempo de espera
         id: calc
         run: |
-          RAW="${{ steps.convert.outputs.utc_time }}"
-          TARGET=$(echo "$RAW" | tr -d '\r' | tr -d '"' | xargs)
-          echo "Hora objetivo UTC final: $TARGET"
-          # Validar con date
-          if ! date -d "$TARGET" >/dev/null 2>&1; then
-            echo "❌ ERROR: Fecha UTC inválida → '$TARGET'"
-            exit 1
-          fi
+          TARGET="${{ steps.convert.outputs.utc_time }}"
           TARGET_TS=$(date -d "$TARGET" +%s)
           NOW_TS=$(date -u +%s)
+
           if [ "$TARGET_TS" -le "$NOW_TS" ]; then
-            echo "❌ ERROR: La hora indicada ya pasó."
+            echo "❌ ERROR: La hora ya pasó"
             exit 1
           fi
+
           WAIT=$(( TARGET_TS - NOW_TS ))
-          echo "Segundos de espera: $WAIT"
           echo "wait_seconds=$WAIT" >> $GITHUB_OUTPUT
+
       - name: Esperando...
         run: sleep ${{ steps.calc.outputs.wait_seconds }}
 
-
-   # ======================================================
-  # DEPLOY PRODUCCIÓN (VMWARE vía túnel SSH)
+  # ======================================================
+  # DEPLOY PRODUCCIÓN + BACKUP ORACLE
   # ======================================================
   deploy-prod:
     name: Deploy to Production (VMware via SSH Tunnel)
@@ -192,41 +190,39 @@ jobs:
         run: |
           echo "⚡ Ejecutando deploy en PRODUCCIÓN vía túnel SSH..."
 
-          ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 << 'EOF_PROXMOX'
-            echo "➡ Entrando a Proxmox. Ahora saltamos a VMware por el túnel :43000"
+          ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 "
+            echo '➡ Entrando a Proxmox. Ahora salto a VMware por el túnel :43000'
 
-            ssh -p 43000 -o StrictHostKeyChecking=no ubuntu@localhost << 'EOF_VMWARE'
+            ssh -p 43000 -o StrictHostKeyChecking=no ubuntu@localhost << 'EOF'
               set -e
-              echo "🚀 DEPLOY INICIADO EN VMWARE PRODUCCIÓN"
+
+              echo '🚀 DEPLOY INICIADO EN VMWARE PRODUCCIÓN'
 
               # ======================================================
-              # 🗂 BACKUP ORACLE
+              # BACKUP ORACLE (Windows)
               # ======================================================
               sudo apt-get update -y
               sudo apt-get install -y sshpass
 
               DUMP_NAME=hybridflow_$(date +%Y%m%d_%H%M%S)
-              BACKUP_DIR=/var/backups/hybridflow/${DUMP_NAME}
+              BACKUP_DIR=/var/backups/hybridflow/$DUMP_NAME
 
-              echo "📁 Carpeta backup: ${BACKUP_DIR}"
+              sudo mkdir -p "$BACKUP_DIR"
+              sudo chown ubuntu:ubuntu "$BACKUP_DIR"
 
-              sudo mkdir -p "${BACKUP_DIR}"
-              sudo chown ubuntu:ubuntu "${BACKUP_DIR}"
+              echo '📦 Ejecutando EXPDP en Windows...'
 
-              echo "📦 Ejecutando EXPDP en Windows Server..."
-
-              sshpass -p "UTNGRUPO02**" ssh -o StrictHostKeyChecking=no Administrador@137.0.30.3 "
-                cd C:/app/oracle/product/19c/dbhome_1/BIN
-                ./expdp.exe GRUPO02/\"Grupo02*\" DIRECTORY=DATA_PUMP_DIR DUMPFILE=${DUMP_NAME}.dmp LOGFILE=${DUMP_NAME}.log SCHEMAS=GRUPO02 COMPRESSION=ALL
+              sshpass -p 'UTNGRUPO02**' ssh -o StrictHostKeyChecking=no Administrador@137.0.30.3 "
+                cd 'C:/app/oracle/product/19c/dbhome_1/BIN'
+                ./expdp.exe GRUPO02/\"Grupo02*\" DIRECTORY=DATA_PUMP_DIR DUMPFILE=$DUMP_NAME.dmp LOGFILE=$DUMP_NAME.log SCHEMAS=GRUPO02 COMPRESSION=ALL
               "
 
-              echo "⬇ Descargando dump desde Windows..."
+              echo '⬇ Descargando dump...'
 
-              sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no Administrador@137.0.30.3:"C:/app/oracle/admin/orcl/dpdump/${DUMP_NAME}.dmp" "${BACKUP_DIR}/${DUMP_NAME}.dmp"
+              sshpass -p 'UTNGRUPO02**' scp -o StrictHostKeyChecking=no Administrador@137.0.30.3:"C:/app/oracle/admin/orcl/dpdump/$DUMP_NAME.dmp" "$BACKUP_DIR/"
+              sshpass -p 'UTNGRUPO02**' scp -o StrictHostKeyChecking=no Administrador@137.0.30.3:"C:/app/oracle/admin/orcl/dpdump/$DUMP_NAME.log" "$BACKUP_DIR/"
 
-              sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no Administrador@137.0.30.3:"C:/app/oracle/admin/orcl/dpdump/${DUMP_NAME}.log" "${BACKUP_DIR}/${DUMP_NAME}.log"
-
-              echo "✔ Backup Oracle guardado en ${BACKUP_DIR}"
+              echo "✔ Backup Oracle guardado en: $BACKUP_DIR"
 
               # ======================================================
               # DEPLOY LARAVEL
@@ -245,7 +241,7 @@ jobs:
               composer install --no-interaction --prefer-dist --optimize-autoloader
 
               if ! composer show | grep -q yajra/laravel-oci8; then
-                composer require yajra/laravel-oci8:^9.5 --no-interaction
+                composer require yajra/laravel-oci8:"^9.5" --no-interaction
               fi
 
               php artisan config:clear
@@ -253,14 +249,35 @@ jobs:
               php artisan optimize:clear
               php artisan config:cache
 
-              php artisan tinker --execute="DB::connection()->getPdo();" \
-                && echo "✔ Oracle OK en CLI" \
-                || { echo "❌ Oracle FAIL EN CLI"; exit 1; }
+              php artisan tinker --execute='DB::connection()->getPdo();' \
+                && echo '✔ Oracle OK CLI' \
+                || { echo '❌ Oracle FAIL CLI'; exit 1; }
 
-              if [ "${RUN_MIGRATIONS}" = "yes" ]; then
+              if [ "$RUN_MIGRATIONS" = "yes" ]; then
                 php artisan migrate --force
               fi
 
-              echo "✔ DEPLOY COMPLETADO EN PRODUCCIÓN"
-            EOF_VMWARE
-          EOF_PROXMOX
+              echo '✔ DEPLOY COMPLETADO EN PRODUCCIÓN'
+            EOF
+                      "
+
+      # ======================================================
+      # HEALTH CHECK WEB final
+      # ======================================================
+      - name: Health Check Oracle (Proxmox → VMware vía túnel)
+        run: |
+          echo "🔍 Ejecutando Health Check Oracle vía túnel..."
+
+          ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 "
+            ssh -p 43000 -o StrictHostKeyChecking=no ubuntu@localhost '
+              RESP=\$(curl -s http://127.0.0.1/oracle-test)
+              echo \"Respuesta del endpoint: \$RESP\"
+
+              if echo \"\$RESP\" | grep -q \"Conectado a Oracle correctamente\"; then
+                echo \"✔ Oracle OK en PRODUCCIÓN (WEB)\"
+              else
+                echo \"❌ Oracle NO responde en PRODUCCIÓN (WEB)\"
+                exit 1
+              fi
+            '
+          "
