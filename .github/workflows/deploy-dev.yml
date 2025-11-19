@@ -225,6 +225,12 @@ jobs:
               echo \"🚀 Iniciando deploy en VMware...\"
 
               # ============================================
+              # 🔥 FIX OBLIGATORIO — quitar repos de Oracle rotos
+              # ============================================
+              sudo rm -f /etc/apt/sources.list.d/oracle-instantclient* || true
+              sudo rm -f /etc/apt/sources.list.d/*oracle* || true
+
+              # ============================================
               # 🔧 INSTALAR SSHPASS SI NO EXISTE
               # ============================================
               sudo apt update -y
