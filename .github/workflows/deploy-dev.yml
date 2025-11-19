@@ -200,7 +200,8 @@ jobs:
       - name: Esperando...
         run: sleep ${{ steps.calc.outputs.wait_seconds }}
 
-  # ======================================================
+
+          # ======================================================
   # DEPLOY PRODUCCIÓN (VMWARE vía túnel SSH)
   # ======================================================
   deploy-prod:
@@ -226,6 +227,13 @@ jobs:
             ssh -p 43000 -o StrictHostKeyChecking=no ubuntu@localhost '
               set -e
               echo \"🚀 Iniciando deploy en VMware...\"
+
+              # ======================================================
+              # 📦 CREAR CARPETA BASE DE BACKUPS (si no existe)
+              # ======================================================
+              sudo mkdir -p /var/backups/hybridflow
+              sudo chown -R ubuntu:ubuntu /var/backups/hybridflow
+              sudo chmod -R 775 /var/backups/hybridflow
 
               # ======================================================
               # 📦 BACKUP AUTOMÁTICO ANTES DEL DEPLOY
@@ -278,7 +286,7 @@ jobs:
               cd backend &&
 
               sudo chown -R ubuntu:www-data storage bootstrap/cache &&
-              sudo chmod -R 775 storage bootstrap/cache &&
+              sudo chmod -R 775 storage/bootstrap/cache &&
 
               composer install --no-interaction --prefer-dist --optimize-autoloader \
                 && echo \"✔ Composer install OK\"
@@ -324,6 +332,7 @@ jobs:
               echo \"✔ DEPLOY COMPLETADO EN PRODUCCIÓN\"
             '
           "
+
       # ======================================================
       # HEALTH CHECK WEB (Laravel FPM)
       # ======================================================
