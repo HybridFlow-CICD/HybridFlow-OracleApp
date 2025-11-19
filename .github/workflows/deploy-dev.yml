@@ -201,7 +201,6 @@ jobs:
         run: sleep ${{ steps.calc.outputs.wait_seconds }}
 
 
-
 # ======================================================
 # DEPLOY PRODUCCIÓN (VMWARE vía túnel SSH)
 # ======================================================
@@ -216,6 +215,7 @@ jobs:
       - name: Deploy a PRODUCCIÓN (via túnel SSH reverse)
         env:
           RUN_MIGRATIONS: ${{ needs.wait-for-prod.outputs.run_migrations }}
+
         run: |
           echo "⚡ Ejecutando deploy en PRODUCCIÓN vía túnel SSH..."
 
@@ -226,6 +226,10 @@ jobs:
               set -e
               echo \"🚀 Iniciando deploy en VMware...\"
 
+              # ======================================================
+              # 📁 DEPLOY EN VMWARE (Producción)
+              # ======================================================
+
               cd /var/www/html/HybridFlow-OracleApp &&
               git fetch origin main &&
               git reset --hard origin/main &&
@@ -234,19 +238,48 @@ jobs:
               cd backend &&
 
               sudo chown -R ubuntu:www-data storage bootstrap/cache &&
-              sudo chmod -R 775 storage bootstrap/cache &&
+              sudo chmod -R 775 storage/bootstrap/cache &&
 
-              composer install --no-interaction --prefer-dist --optimize-autoloader &&
+              composer install --no-interaction --prefer-dist --optimize-autoloader ||
 
-              php artisan config:clear &&
-              php artisan cache:clear &&
-              php artisan optimize:clear &&
-              php artisan config:cache &&
+              echo \"✔ Composer install ejecutado correctamente\"
 
-              echo \"🔍 Probando conexión a Oracle PROD...\"
-              php artisan tinker --execute=\"DB::connection()->getPdo();\" || { echo \"❌ Oracle FAIL en PROD\"; exit 1; }
 
+              # ======================================================
+              # 📦 INSTALAR YAJRA (OCI8) SI NO EXISTE
+              # ======================================================
+              if ! composer show | grep -q \"yajra/laravel-oci8\"; then
+                echo \"📦 Instalando Yajra Oracle OCI8 automáticamente...\"
+                composer require yajra/laravel-oci8:\"^9.5\" --no-interaction
+              else
+                echo \"🔎 Yajra ya está instalado en PRODUCCIÓN.\"
+              fi
+
+
+              # ======================================================
+              # 🧹 LIMPIEZA Y OPTIMIZACIÓN DE LARAVEL
+              # ======================================================
+              php artisan config:clear
+              php artisan cache:clear
+              php artisan optimize:clear
+              php artisan config:cache
+
+
+              # ======================================================
+              # 🔌 PRUEBA CLI DE CONEXIÓN A ORACLE
+              # (Usa OCI8, así que NO depende de pdo_oci)
+              # ======================================================
+              echo \"🔌 Probando ORACLE desde CLI...\"
+              php artisan tinker --execute=\"DB::connection()->getPdo();\" \
+                && echo \"✔ Oracle OK en CLI (Producción)\" \
+                || { echo \"❌ Oracle FAIL en CLI\"; exit 1; }
+
+
+              # ======================================================
+              # 🧬 MIGRACIONES OPCIONALES
+              # ======================================================
               if [ \"${RUN_MIGRATIONS}\" = \"yes\" ]; then
+                echo \"🛠 Ejecutando migraciones en producción...\"
                 php artisan migrate --force
               fi
 
@@ -255,6 +288,9 @@ jobs:
           "
 
 
+      # ======================================================
+      # HEALTH CHECK WEB (Verifica Oracle desde Laravel - FPM)
+      # ======================================================
       - name: Health Check Oracle (Proxmox → VMware vía túnel)
         run: |
           echo "🔍 Ejecutando Health Check Oracle vía túnel..."
@@ -265,10 +301,11 @@ jobs:
               echo \"Respuesta del endpoint: \$RESP\"
 
               if echo \"\$RESP\" | grep -q \"Conectado a Oracle correctamente\"; then
-                echo \"✔ Oracle OK en PRODUCCIÓN\"
+                echo \"✔ Oracle OK en PRODUCCIÓN (WEB)\"
               else
-                echo \"❌ Oracle NO responde en PRODUCCIÓN\"
+                echo \"❌ Oracle NO responde en PRODUCCIÓN (WEB)\"
                 exit 1
               fi
             '
           "
+
