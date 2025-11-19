@@ -174,7 +174,8 @@ jobs:
       - name: Esperando...
         run: sleep ${{ steps.calc.outputs.wait_seconds }}
 
-  # ======================================================
+
+   # ======================================================
   # DEPLOY PRODUCCIÓN (VMWARE vía túnel SSH)
   # ======================================================
   deploy-prod:
@@ -191,50 +192,44 @@ jobs:
         run: |
           echo "⚡ Ejecutando deploy en PRODUCCIÓN vía túnel SSH..."
 
-          # ========================================
-          # PRIMER SALTO → PROXMOX
-          # ========================================
-          ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 "
-            echo '➡ Entrando a Proxmox. Ahora saltamos a VMware por el túnel :43000'
+          ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 << 'EOF_PROXMOX'
+            echo "➡ Entrando a Proxmox. Ahora saltamos a VMware por el túnel :43000"
 
-            # ========================================
-            # SEGUNDO SALTO → VMWARE (via túnel reverse)
-            # ========================================
             ssh -p 43000 -o StrictHostKeyChecking=no ubuntu@localhost << 'EOF_VMWARE'
               set -e
-
-              echo '🚀 DEPLOY INICIADO EN VMWARE PRODUCCIÓN'
+              echo "🚀 DEPLOY INICIADO EN VMWARE PRODUCCIÓN"
 
               # ======================================================
-              # 🗂 BACKUP ORACLE (Windows Server)
+              # 🗂 BACKUP ORACLE
               # ======================================================
-
               sudo apt-get update -y
               sudo apt-get install -y sshpass
 
               DUMP_NAME=hybridflow_$(date +%Y%m%d_%H%M%S)
               BACKUP_DIR=/var/backups/hybridflow/${DUMP_NAME}
 
+              echo "📁 Carpeta backup: ${BACKUP_DIR}"
+
               sudo mkdir -p "${BACKUP_DIR}"
               sudo chown ubuntu:ubuntu "${BACKUP_DIR}"
 
-              echo '📦 Ejecutando EXPDP en Windows Server...'
+              echo "📦 Ejecutando EXPDP en Windows Server..."
 
-              sshpass -p 'UTNGRUPO02**' ssh -o StrictHostKeyChecking=no Administrador@137.0.30.3 "
-                cd 'C:/app/oracle/product/19c/dbhome_1/BIN'
+              sshpass -p "UTNGRUPO02**" ssh -o StrictHostKeyChecking=no Administrador@137.0.30.3 "
+                cd C:/app/oracle/product/19c/dbhome_1/BIN
                 ./expdp.exe GRUPO02/\"Grupo02*\" DIRECTORY=DATA_PUMP_DIR DUMPFILE=${DUMP_NAME}.dmp LOGFILE=${DUMP_NAME}.log SCHEMAS=GRUPO02 COMPRESSION=ALL
               "
 
-              echo '⬇ Descargando dump...'
+              echo "⬇ Descargando dump desde Windows..."
 
-              sshpass -p 'UTNGRUPO02**' scp -o StrictHostKeyChecking=no Administrador@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/${DUMP_NAME}.dmp\" \"${BACKUP_DIR}/${DUMP_NAME}.dmp\"
+              sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no Administrador@137.0.30.3:"C:/app/oracle/admin/orcl/dpdump/${DUMP_NAME}.dmp" "${BACKUP_DIR}/${DUMP_NAME}.dmp"
 
-              sshpass -p 'UTNGRUPO02**' scp -o StrictHostKeyChecking=no Administrador@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/${DUMP_NAME}.log\" \"${BACKUP_DIR}/${DUMP_NAME}.log\"
+              sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no Administrador@137.0.30.3:"C:/app/oracle/admin/orcl/dpdump/${DUMP_NAME}.log" "${BACKUP_DIR}/${DUMP_NAME}.log"
 
-              echo '✔ Backup Oracle guardado en:' \"${BACKUP_DIR}\"
+              echo "✔ Backup Oracle guardado en ${BACKUP_DIR}"
 
               # ======================================================
-              # DEPLOY DEL CÓDIGO LARAVEL
+              # DEPLOY LARAVEL
               # ======================================================
               cd /var/www/html/HybridFlow-OracleApp
 
@@ -258,14 +253,14 @@ jobs:
               php artisan optimize:clear
               php artisan config:cache
 
-              php artisan tinker --execute='DB::connection()->getPdo();' \
-                && echo '✔ Oracle OK en CLI' \
-                || { echo '❌ Oracle FAIL EN CLI'; exit 1; }
+              php artisan tinker --execute="DB::connection()->getPdo();" \
+                && echo "✔ Oracle OK en CLI" \
+                || { echo "❌ Oracle FAIL EN CLI"; exit 1; }
 
               if [ "${RUN_MIGRATIONS}" = "yes" ]; then
                 php artisan migrate --force
               fi
 
-              echo '✔ DEPLOY COMPLETADO EN PRODUCCIÓN'
-          EOF_VMWARE
-                  "
+              echo "✔ DEPLOY COMPLETADO EN PRODUCCIÓN"
+            EOF_VMWARE
+          EOF_PROXMOX
