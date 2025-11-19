@@ -175,9 +175,9 @@ jobs:
         run: sleep ${{ steps.calc.outputs.wait_seconds }}
 
 
-# ======================================================
-# DEPLOY PRODUCCIÓN (VMWARE vía túnel SSH)
-# ======================================================
+  # ======================================================
+  # DEPLOY PRODUCCIÓN (VMWARE vía túnel SSH)
+  # ======================================================
   deploy-prod:
     name: Deploy to Production (VMware via SSH Tunnel)
     needs: wait-for-prod
@@ -185,7 +185,6 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
 
     steps:
-
       - name: Deploy a PRODUCCIÓN (via túnel SSH reverse)
         env:
           RUN_MIGRATIONS: ${{ needs.wait-for-prod.outputs.run_migrations }}
@@ -193,66 +192,82 @@ jobs:
         run: |
           echo "⚡ Ejecutando deploy en PRODUCCIÓN vía túnel SSH..."
 
-          ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 << 'EOF_MAIN'
-            echo "➡ Conectando a VMware mediante túnel reverse :43000..."
+          # ========================================
+          # PRIMER SALTO → PROXMOX
+          # ========================================
+          ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 "
+            echo '➡ Entrando a Proxmox. Ahora saltamos a VMware por el túnel :43000'
 
-            ssh -p 43000 -o StrictHostKeyChecking=no ubuntu@localhost << 'EOF_VMWARE'
+            # ========================================
+            # SEGUNDO SALTO → VMWARE (via túnel reverse)
+            # ========================================
+            ssh -p 43000 -o StrictHostKeyChecking=no ubuntu@localhost \"
               set -e
-              echo "🚀 Iniciando deploy en VMware..."
+
+              echo '🚀 DEPLOY INICIADO EN VMWARE PRODUCCIÓN'
 
               # ======================================================
-              # 📁 PREPARAR BACKUP DIR
+              # 🗂 BACKUP ORACLE (Windows Server)
               # ======================================================
-              sudo mkdir -p /var/backups/hybridflow
-              sudo chown -R ubuntu:ubuntu /var/backups/hybridflow
 
-              BACKUP_DIR=/var/backups/hybridflow/$(date +%Y-%m-%d_%H-%M-%S)
-              mkdir -p "$BACKUP_DIR"
+              sudo apt-get update -y
+              sudo apt-get install -y sshpass
 
-              DUMP_NAME=hybridflow_$(date +%Y%m%d_%H%M%S)
+              DUMP_NAME=hybridflow_\$(date +%Y%m%d_%H%M%S)
+              BACKUP_DIR=/var/backups/hybridflow/\$DUMP_NAME
 
-              # ======================================================
-              # 🗄 BACKUP ORACLE (Windows via SSH)
-              # ======================================================
-              sshpass -p "UTNGRUPO02**" ssh -o StrictHostKeyChecking=no Administrador@137.0.30.3 << EOF_WIN
-              cd C:/app/oracle/product/19c/dbhome_1/BIN
-              expdp.exe GRUPO02/"Grupo02*"@//137.0.30.3:1521/orclpdb DIRECTORY=DATA_PUMP_DIR DUMPFILE=${DUMP_NAME}.dmp LOGFILE=${DUMP_NAME}.log SCHEMAS=GRUPO02 COMPRESSION=ALL
-              EOF_WIN
+              sudo mkdir -p \"\$BACKUP_DIR\"
+              sudo chown ubuntu:ubuntu \"\$BACKUP_DIR\"
 
-              # ======================================================
-              # 📥 DESCARGAR DUMP
-              # ======================================================
-              sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no \
-                Administrador@137.0.30.3:"C:/app/oracle/admin/orcl/dpdump/${DUMP_NAME}.dmp" \
-                "$BACKUP_DIR/${DUMP_NAME}.dmp"
+              echo '📦 Ejecutando EXPDP en Windows Server...'
 
-              sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no \
-                Administrador@137.0.30.3:"C:/app/oracle/admin/orcl/dpdump/${DUMP_NAME}.log" \
-                "$BACKUP_DIR/${DUMP_NAME}.log"
+              sshpass -p 'UTNGRUPO02**' ssh -o StrictHostKeyChecking=no Administrador@137.0.30.3 \"
+                cd 'C:/app/oracle/product/19c/dbhome_1/BIN'
+                ./expdp.exe GRUPO02/\\\"Grupo02*\\\" DIRECTORY=DATA_PUMP_DIR DUMPFILE=\$DUMP_NAME.dmp LOGFILE=\$DUMP_NAME.log SCHEMAS=GRUPO02 COMPRESSION=ALL
+              \"
 
-              echo "✔ Backup Oracle listo"
+              echo '⬇ Descargando dump...'
+
+              sshpass -p 'UTNGRUPO02**' scp -o StrictHostKeyChecking=no Administrador@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/\$DUMP_NAME.dmp\" \"\$BACKUP_DIR/\$DUMP_NAME.dmp\"
+
+              sshpass -p 'UTNGRUPO02**' scp -o StrictHostKeyChecking=no Administrador@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/\$DUMP_NAME.log\" \"\$BACKUP_DIR/\$DUMP_NAME.log\"
+
+              echo '✔ Backup Oracle guardado en: ' \"\$BACKUP_DIR\"
 
               # ======================================================
-              # DEPLOY LARAVEL
+              # DEPLOY DEL CÓDIGO LARAVEL
               # ======================================================
               cd /var/www/html/HybridFlow-OracleApp
+
               git fetch origin main
               git reset --hard origin/main
               git pull origin main
 
               cd backend
+
+              sudo chown -R ubuntu:www-data storage bootstrap/cache
+              sudo chmod -R 775 storage bootstrap/cache
+
               composer install --no-interaction --prefer-dist --optimize-autoloader
 
+              if ! composer show | grep -q yajra/laravel-oci8; then
+                composer require yajra/laravel-oci8:\"^9.5\" --no-interaction
+              fi
+
+              php artisan config:clear
+              php artisan cache:clear
               php artisan optimize:clear
               php artisan config:cache
 
-              php artisan tinker --execute="DB::connection()->getPdo();" \
-                && echo "Oracle OK CLI" || exit 1
+              php artisan tinker --execute='DB::connection()->getPdo();' \
+                && echo '✔ Oracle OK en CLI' \
+                || { echo '❌ Oracle FAIL EN CLI'; exit 1; }
 
-              if [ "${RUN_MIGRATIONS}" = "yes" ]; then
+              if [ \"${RUN_MIGRATIONS}\" = \"yes\" ]; then
                 php artisan migrate --force
               fi
 
-              echo "✔ DEPLOY COMPLETADO"
-          EOF_VMWARE
-          EOF_MAIN
+              echo '✔ DEPLOY COMPLETADO EN PRODUCCIÓN'
+            \"
+          "
+
