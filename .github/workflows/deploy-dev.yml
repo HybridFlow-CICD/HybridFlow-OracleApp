@@ -200,7 +200,7 @@ jobs:
       - name: Esperando...
         run: sleep ${{ steps.calc.outputs.wait_seconds }}
 
-          # ======================================================
+  # ======================================================
   # DEPLOY PRODUCCIÓN (VMWARE vía túnel SSH)
   # ======================================================
   deploy-prod:
