@@ -200,7 +200,7 @@ jobs:
       - name: Esperando...
         run: sleep ${{ steps.calc.outputs.wait_seconds }}
 
-  # ======================================================
+          # ======================================================
   # DEPLOY PRODUCCIÓN (VMWARE vía túnel SSH)
   # ======================================================
   deploy-prod:
@@ -211,12 +211,10 @@ jobs:
 
     steps:
 
-      # ======================================================
-      # DEPLOY A VMWARE POR TÚNEL SSH
-      # ======================================================
       - name: Deploy a PRODUCCIÓN (via túnel SSH reverse)
         env:
           RUN_MIGRATIONS: ${{ needs.wait-for-prod.outputs.run_migrations }}
+
         run: |
           echo "⚡ Ejecutando deploy en PRODUCCIÓN vía túnel SSH..."
 
@@ -228,13 +226,13 @@ jobs:
               echo \"🚀 Iniciando deploy en VMware...\"
 
               # ======================================================
-              # 📂 CREACIÓN / VALIDACIÓN DE CARPETA DE BACKUPS
+              # 📂 CREAR CARPETA DE BACKUPS
               # ======================================================
               sudo mkdir -p /var/backups/hybridflow
               sudo chown -R ubuntu:ubuntu /var/backups/hybridflow
               sudo chmod -R 775 /var/backups/hybridflow
 
-              BACKUP_DIR=\"/var/backups/hybridflow/\$(date +'%Y-%m-%d_%H-%M-%S')\"
+              BACKUP_DIR=\"/var/backups/hybridflow/\$(date +\"%Y-%m-%d_%H-%M-%S\")\"
               mkdir -p \"\$BACKUP_DIR\"
               echo \"📁 Backup guardado en: \$BACKUP_DIR\"
 
@@ -255,26 +253,24 @@ jobs:
               # ======================================================
               echo \"🗄 Respaldando ORACLE...\"
 
-              DUMP_NAME=\"hybridflow_\$(date +'%Y%m%d_%H%M%S')\"
+              DUMP_NAME=\"hybridflow_\$(date +\"%Y%m%d_%H%M%S\")\"
 
-              ssh Administrator@137.0.30.3 \"
-                expdp GRUPO02/Grupo02* DIRECTORY=DATA_PUMP_DIR \\
-                  DUMPFILE=${DUMP_NAME}.dmp \\
-                  LOGFILE=${DUMP_NAME}.log \\
-                  SCHEMAS=GRUPO02 \\
-                  COMPRESSION=ALL
-              \" || exit 1
+              ssh -o StrictHostKeyChecking=no Administrator@137.0.30.3 \"powershell -Command \\\"
+                expdp GRUPO02/Grupo02* DIRECTORY=DATA_PUMP_DIR DUMPFILE=$DUMP_NAME.dmp LOGFILE=$DUMP_NAME.log SCHEMAS=GRUPO02 COMPRESSION=ALL
+              \\\"
+              \" || { echo \"❌ ERROR ejecutando expdp en Windows\"; exit 1; }
 
-              echo \"⬇ Descargando dump...\" 
-              scp -o StrictHostKeyChecking=no \
-                Administrator@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/${DUMP_NAME}.dmp\" \
-                \"\$BACKUP_DIR/${DUMP_NAME}.dmp\" || exit 1
+              echo \"⬇ Descargando dump desde Windows...\"
 
               scp -o StrictHostKeyChecking=no \
-                Administrator@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/${DUMP_NAME}.log\" \
-                \"\$BACKUP_DIR/${DUMP_NAME}.log\" || exit 1
+                Administrator@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/$DUMP_NAME.dmp\" \
+                \"\$BACKUP_DIR/$DUMP_NAME.dmp\" || exit 1
 
-              echo \"✔ Backup Oracle completado\"
+              scp -o StrictHostKeyChecking=no \
+                Administrator@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/$DUMP_NAME.log\" \
+                \"\$BACKUP_DIR/$DUMP_NAME.log\" || exit 1
+
+              echo \"✔ Backup Oracle completado correctamente\"
 
               # ======================================================
               # 🚀 DEPLOY LARAVEL
