@@ -200,7 +200,7 @@ jobs:
         run:
           sleep ${{ steps.calc.outputs.wait_seconds }}
 
-            # ======================================================
+  # ======================================================
   # DEPLOY PRODUCCIÓN (VMWARE vía túnel SSH)
   # ======================================================
   deploy-prod:
@@ -224,9 +224,15 @@ jobs:
               set -e
               echo \"🚀 Iniciando deploy en VMware...\"
 
-              # ======================================================
+              # ============================================
+              # 🔧 INSTALAR SSHPASS SI NO EXISTE
+              # ============================================
+              sudo apt update -y
+              sudo apt install sshpass -y
+
+              # ============================================
               # 📂 CREAR CARPETA DE BACKUPS
-              # ======================================================
+              # ============================================
               sudo mkdir -p /var/backups/hybridflow
               sudo chown -R ubuntu:ubuntu /var/backups/hybridflow
               sudo chmod -R 775 /var/backups/hybridflow
@@ -235,38 +241,36 @@ jobs:
               mkdir -p \"\$BACKUP_DIR\"
               echo \"📁 Backup en: \$BACKUP_DIR\"
 
-              # ======================================================
+              # ============================================
               # 🗂 BACKUP FRONTEND
-              # ======================================================
-              echo \"🗂 Respaldando FRONTEND...\"
+              # ============================================
               sudo cp -r /var/www/html/HybridFlow-OracleApp/frontend \"\$BACKUP_DIR/frontend\" || exit 1
 
-              # ======================================================
+              # ============================================
               # 🗂 BACKUP BACKEND
-              # ======================================================
-              echo \"🗂 Respaldando BACKEND...\"
+              # ============================================
               sudo cp -r /var/www/html/HybridFlow-OracleApp/backend \"\$BACKUP_DIR/backend\" || exit 1
 
-              # ======================================================
+              # ============================================
               # 🗄 BACKUP ORACLE DESDE WINDOWS
-              # ======================================================
+              # ============================================
               echo \"🗄 Respaldando ORACLE...\"
               DUMP_NAME=hybridflow_\$(date +%Y%m%d_%H%M%S)
 
-              ssh -o StrictHostKeyChecking=no Administrador@137.0.30.3 \"
+              sshpass -p \"UTNGRUPO02**\" ssh -o StrictHostKeyChecking=no Administrador@137.0.30.3 \"
                 cd 'C:/app/oracle/product/19c/dbhome_1/BIN'
-                ./expdp.exe GRUPO02/Grupo02* DIRECTORY=DATA_PUMP_DIR DUMPFILE=${DUMP_NAME}.dmp LOGFILE=${DUMP_NAME}.log SCHEMAS=GRUPO02 COMPRESSION=ALL
+                ./expdp.exe GRUPO02/Grupo02* DIRECTORY=DATA_PUMP_DIR DUMPFILE=\${DUMP_NAME}.dmp LOGFILE=\${DUMP_NAME}.log SCHEMAS=GRUPO02 COMPRESSION=ALL
               \" || exit 1
 
               echo \"⬇ Descargando dump...\"
-              scp -o StrictHostKeyChecking=no Administrador@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/\${DUMP_NAME}.dmp\" \"\$BACKUP_DIR/\${DUMP_NAME}.dmp\" || exit 1
-              scp -o StrictHostKeyChecking=no Administrador@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/\${DUMP_NAME}.log\" \"\$BACKUP_DIR/\${DUMP_NAME}.log\" || exit 1
+              sshpass -p \"UTNGRUPO02**\" scp -o StrictHostKeyChecking=no Administrador@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/\${DUMP_NAME}.dmp\" \"\$BACKUP_DIR/\${DUMP_NAME}.dmp\" || exit 1
+              sshpass -p \"UTNGRUPO02**\" scp -o StrictHostKeyChecking=no Administrador@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/\${DUMP_NAME}.log\" \"\$BACKUP_DIR/\${DUMP_NAME}.log\" || exit 1
 
               echo \"✔ Backup Oracle completado\"
 
-              # ======================================================
+              # ============================================
               # 🚀 DEPLOY LARAVEL
-              # ======================================================
+              # ============================================
               cd /var/www/html/HybridFlow-OracleApp &&
               git fetch origin main &&
               git reset --hard origin/main &&
