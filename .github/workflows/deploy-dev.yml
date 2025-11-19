@@ -200,10 +200,9 @@ jobs:
       - name: Esperando...
         run: sleep ${{ steps.calc.outputs.wait_seconds }}
 
-
-# ======================================================
-# DEPLOY PRODUCCIÓN (VMWARE vía túnel SSH)
-# ======================================================
+  # ======================================================
+  # DEPLOY PRODUCCIÓN (VMWARE vía túnel SSH)
+  # ======================================================
   deploy-prod:
     name: Deploy to Production (VMware via SSH Tunnel)
     needs: wait-for-prod
@@ -212,10 +211,12 @@ jobs:
 
     steps:
 
+      # ======================================================
+      # DEPLOY A VMWARE POR TÚNEL SSH
+      # ======================================================
       - name: Deploy a PRODUCCIÓN (via túnel SSH reverse)
         env:
           RUN_MIGRATIONS: ${{ needs.wait-for-prod.outputs.run_migrations }}
-
         run: |
           echo "⚡ Ejecutando deploy en PRODUCCIÓN vía túnel SSH..."
 
@@ -227,9 +228,48 @@ jobs:
               echo \"🚀 Iniciando deploy en VMware...\"
 
               # ======================================================
+              # 📦 BACKUP AUTOMÁTICO ANTES DEL DEPLOY
+              # ======================================================
+              BACKUP_DIR=\"/var/backups/hybridflow/\$(date +'%Y-%m-%d_%H-%M-%S')\"
+              mkdir -p \"\$BACKUP_DIR\"
+              echo \"📁 Backup en: \$BACKUP_DIR\"
+
+              echo \"🗂 Respaldando FRONTEND...\"
+              sudo cp -r /var/www/html/HybridFlow-OracleApp/frontend \"\$BACKUP_DIR/frontend\" \
+                || { echo \"❌ ERROR: Backup FRONTEND falla\"; exit 1; }
+
+              echo \"🗂 Respaldando BACKEND...\"
+              sudo cp -r /var/www/html/HybridFlow-OracleApp/backend \"\$BACKUP_DIR/backend\" \
+                || { echo \"❌ ERROR: Backup BACKEND falla\"; exit 1; }
+
+              echo \"🗄 Respaldando BASE DE DATOS ORACLE...\"
+              DUMP_NAME=\"hybridflow_\$(date +'%Y%m%d_%H%M%S')\"
+
+              expdp GRUPO02/Grupo02*@//137.0.30.3:1521/orclpdb \
+                DIRECTORY=DATA_PUMP_DIR \
+                DUMPFILE=\${DUMP_NAME}.dmp \
+                LOGFILE=\${DUMP_NAME}.log \
+                SCHEMAS=GRUPO02 \
+                COMPRESSION=ALL \
+                || { echo \"❌ ERROR: Backup ORACLE falla\"; exit 1; }
+
+              echo \"⬇ Copiando DMP desde Windows Server...\"
+              scp -o StrictHostKeyChecking=no \
+                Administrator@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/\${DUMP_NAME}.dmp\" \
+                \"\$BACKUP_DIR/\${DUMP_NAME}.dmp\" \
+                || { echo \"❌ ERROR copiando .dmp desde Windows\"; exit 1; }
+
+              scp -o StrictHostKeyChecking=no \
+                Administrator@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/\${DUMP_NAME}.log\" \
+                \"\$BACKUP_DIR/\${DUMP_NAME}.log\" \
+                || { echo \"❌ ERROR copiando .log desde Windows\"; exit 1; }
+
+              echo \"✔ BACKUP COMPLETO CREADO ANTES DEL DEPLOY\"
+
+
+              # ======================================================
               # 📁 DEPLOY EN VMWARE (Producción)
               # ======================================================
-
               cd /var/www/html/HybridFlow-OracleApp &&
               git fetch origin main &&
               git reset --hard origin/main &&
@@ -238,11 +278,10 @@ jobs:
               cd backend &&
 
               sudo chown -R ubuntu:www-data storage bootstrap/cache &&
-              sudo chmod -R 775 storage/bootstrap/cache &&
+              sudo chmod -R 775 storage bootstrap/cache &&
 
-              composer install --no-interaction --prefer-dist --optimize-autoloader ||
-
-              echo \"✔ Composer install ejecutado correctamente\"
+              composer install --no-interaction --prefer-dist --optimize-autoloader \
+                && echo \"✔ Composer install OK\"
 
 
               # ======================================================
@@ -267,7 +306,6 @@ jobs:
 
               # ======================================================
               # 🔌 PRUEBA CLI DE CONEXIÓN A ORACLE
-              # (Usa OCI8, así que NO depende de pdo_oci)
               # ======================================================
               echo \"🔌 Probando ORACLE desde CLI...\"
               php artisan tinker --execute=\"DB::connection()->getPdo();\" \
@@ -286,10 +324,8 @@ jobs:
               echo \"✔ DEPLOY COMPLETADO EN PRODUCCIÓN\"
             '
           "
-
-
       # ======================================================
-      # HEALTH CHECK WEB (Verifica Oracle desde Laravel - FPM)
+      # HEALTH CHECK WEB (Laravel FPM)
       # ======================================================
       - name: Health Check Oracle (Proxmox → VMware vía túnel)
         run: |
@@ -308,4 +344,3 @@ jobs:
               fi
             '
           "
-
