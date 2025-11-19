@@ -200,8 +200,7 @@ jobs:
       - name: Esperando...
         run: sleep ${{ steps.calc.outputs.wait_seconds }}
 
-
-          # ======================================================
+  # ======================================================
   # DEPLOY PRODUCCIÓN (VMWARE vía túnel SSH)
   # ======================================================
   deploy-prod:
@@ -229,127 +228,83 @@ jobs:
               echo \"🚀 Iniciando deploy en VMware...\"
 
               # ======================================================
-              # 📦 CREAR CARPETA BASE DE BACKUPS (si no existe)
+              # 📂 CREACIÓN / VALIDACIÓN DE CARPETA DE BACKUPS
               # ======================================================
               sudo mkdir -p /var/backups/hybridflow
               sudo chown -R ubuntu:ubuntu /var/backups/hybridflow
               sudo chmod -R 775 /var/backups/hybridflow
 
-              # ======================================================
-              # 📦 BACKUP AUTOMÁTICO ANTES DEL DEPLOY
-              # ======================================================
               BACKUP_DIR=\"/var/backups/hybridflow/\$(date +'%Y-%m-%d_%H-%M-%S')\"
               mkdir -p \"\$BACKUP_DIR\"
-              echo \"📁 Backup en: \$BACKUP_DIR\"
-
-              echo \"🗂 Respaldando FRONTEND...\"
-              sudo cp -r /var/www/html/HybridFlow-OracleApp/frontend \"\$BACKUP_DIR/frontend\" \
-                || { echo \"❌ ERROR: Backup FRONTEND falla\"; exit 1; }
-
-              echo \"🗂 Respaldando BACKEND...\"
-              sudo cp -r /var/www/html/HybridFlow-OracleApp/backend \"\$BACKUP_DIR/backend\" \
-                || { echo \"❌ ERROR: Backup BACKEND falla\"; exit 1; }
-
-              echo \"🗄 Respaldando BASE DE DATOS ORACLE...\"
-              DUMP_NAME=\"hybridflow_\$(date +'%Y%m%d_%H%M%S')\"
-
-              expdp GRUPO02/Grupo02*@//137.0.30.3:1521/orclpdb \
-                DIRECTORY=DATA_PUMP_DIR \
-                DUMPFILE=\${DUMP_NAME}.dmp \
-                LOGFILE=\${DUMP_NAME}.log \
-                SCHEMAS=GRUPO02 \
-                COMPRESSION=ALL \
-                || { echo \"❌ ERROR: Backup ORACLE falla\"; exit 1; }
-
-              echo \"⬇ Copiando DMP desde Windows Server...\"
-              scp -o StrictHostKeyChecking=no \
-                Administrator@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/\${DUMP_NAME}.dmp\" \
-                \"\$BACKUP_DIR/\${DUMP_NAME}.dmp\" \
-                || { echo \"❌ ERROR copiando .dmp desde Windows\"; exit 1; }
-
-              scp -o StrictHostKeyChecking=no \
-                Administrator@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/\${DUMP_NAME}.log\" \
-                \"\$BACKUP_DIR/\${DUMP_NAME}.log\" \
-                || { echo \"❌ ERROR copiando .log desde Windows\"; exit 1; }
-
-              echo \"✔ BACKUP COMPLETO CREADO ANTES DEL DEPLOY\"
-
+              echo \"📁 Backup guardado en: \$BACKUP_DIR\"
 
               # ======================================================
-              # 📁 DEPLOY EN VMWARE (Producción)
+              # 🗂 BACKUP FRONTEND
+              # ======================================================
+              echo \"🗂 Respaldando FRONTEND...\"
+              sudo cp -r /var/www/html/HybridFlow-OracleApp/frontend \"\$BACKUP_DIR/frontend\" || exit 1
+
+              # ======================================================
+              # 🗂 BACKUP BACKEND
+              # ======================================================
+              echo \"🗂 Respaldando BACKEND...\"
+              sudo cp -r /var/www/html/HybridFlow-OracleApp/backend \"\$BACKUP_DIR/backend\" || exit 1
+
+              # ======================================================
+              # 🗄 BACKUP ORACLE (Windows Server)
+              # ======================================================
+              echo \"🗄 Respaldando ORACLE...\"
+
+              DUMP_NAME=\"hybridflow_\$(date +'%Y%m%d_%H%M%S')\"
+
+              ssh Administrator@137.0.30.3 \"
+                expdp GRUPO02/Grupo02* DIRECTORY=DATA_PUMP_DIR \\
+                  DUMPFILE=${DUMP_NAME}.dmp \\
+                  LOGFILE=${DUMP_NAME}.log \\
+                  SCHEMAS=GRUPO02 \\
+                  COMPRESSION=ALL
+              \" || exit 1
+
+              echo \"⬇ Descargando dump...\" 
+              scp -o StrictHostKeyChecking=no \
+                Administrator@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/${DUMP_NAME}.dmp\" \
+                \"\$BACKUP_DIR/${DUMP_NAME}.dmp\" || exit 1
+
+              scp -o StrictHostKeyChecking=no \
+                Administrator@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/${DUMP_NAME}.log\" \
+                \"\$BACKUP_DIR/${DUMP_NAME}.log\" || exit 1
+
+              echo \"✔ Backup Oracle completado\"
+
+              # ======================================================
+              # 🚀 DEPLOY LARAVEL
               # ======================================================
               cd /var/www/html/HybridFlow-OracleApp &&
               git fetch origin main &&
               git reset --hard origin/main &&
-              git pull origin main &&
+              git pull origin main
 
-              cd backend &&
+              cd backend
+              sudo chown -R ubuntu:www-data storage bootstrap/cache
+              sudo chmod -R 775 storage bootstrap/cache
 
-              sudo chown -R ubuntu:www-data storage bootstrap/cache &&
-              sudo chmod -R 775 storage/bootstrap/cache &&
+              composer install --no-interaction --prefer-dist --optimize-autoloader
 
-              composer install --no-interaction --prefer-dist --optimize-autoloader \
-                && echo \"✔ Composer install OK\"
-
-
-              # ======================================================
-              # 📦 INSTALAR YAJRA (OCI8) SI NO EXISTE
-              # ======================================================
               if ! composer show | grep -q \"yajra/laravel-oci8\"; then
-                echo \"📦 Instalando Yajra Oracle OCI8 automáticamente...\"
                 composer require yajra/laravel-oci8:\"^9.5\" --no-interaction
-              else
-                echo \"🔎 Yajra ya está instalado en PRODUCCIÓN.\"
               fi
 
-
-              # ======================================================
-              # 🧹 LIMPIEZA Y OPTIMIZACIÓN DE LARAVEL
-              # ======================================================
               php artisan config:clear
               php artisan cache:clear
               php artisan optimize:clear
               php artisan config:cache
 
+              php artisan tinker --execute=\"DB::connection()->getPdo();\" || exit 1
 
-              # ======================================================
-              # 🔌 PRUEBA CLI DE CONEXIÓN A ORACLE
-              # ======================================================
-              echo \"🔌 Probando ORACLE desde CLI...\"
-              php artisan tinker --execute=\"DB::connection()->getPdo();\" \
-                && echo \"✔ Oracle OK en CLI (Producción)\" \
-                || { echo \"❌ Oracle FAIL en CLI\"; exit 1; }
-
-
-              # ======================================================
-              # 🧬 MIGRACIONES OPCIONALES
-              # ======================================================
               if [ \"${RUN_MIGRATIONS}\" = \"yes\" ]; then
-                echo \"🛠 Ejecutando migraciones en producción...\"
                 php artisan migrate --force
               fi
 
               echo \"✔ DEPLOY COMPLETADO EN PRODUCCIÓN\"
-            '
-          "
-
-      # ======================================================
-      # HEALTH CHECK WEB (Laravel FPM)
-      # ======================================================
-      - name: Health Check Oracle (Proxmox → VMware vía túnel)
-        run: |
-          echo "🔍 Ejecutando Health Check Oracle vía túnel..."
-
-          ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 "
-            ssh -p 43000 -o StrictHostKeyChecking=no ubuntu@localhost '
-              RESP=\$(curl -s http://127.0.0.1/oracle-test)
-              echo \"Respuesta del endpoint: \$RESP\"
-
-              if echo \"\$RESP\" | grep -q \"Conectado a Oracle correctamente\"; then
-                echo \"✔ Oracle OK en PRODUCCIÓN (WEB)\"
-              else
-                echo \"❌ Oracle NO responde en PRODUCCIÓN (WEB)\"
-                exit 1
-              fi
             '
           "
