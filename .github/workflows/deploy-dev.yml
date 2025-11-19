@@ -192,118 +192,67 @@ jobs:
 
         run: |
           echo "⚡ Ejecutando deploy en PRODUCCIÓN vía túnel SSH..."
-          ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 "
-            echo '➡ Conectando a VMware mediante túnel reverse :43000...'
 
-            ssh -p 43000 -o StrictHostKeyChecking=no ubuntu@localhost '
+          ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 << 'EOF_MAIN'
+            echo "➡ Conectando a VMware mediante túnel reverse :43000..."
+
+            ssh -p 43000 -o StrictHostKeyChecking=no ubuntu@localhost << 'EOF_VMWARE'
               set -e
-              echo \"🚀 Iniciando deploy en VMware...\"
+              echo "🚀 Iniciando deploy en VMware..."
 
               # ======================================================
-              # 📁 CREAR CARPETAS DE BACKUP
+              # 📁 PREPARAR BACKUP DIR
               # ======================================================
               sudo mkdir -p /var/backups/hybridflow
               sudo chown -R ubuntu:ubuntu /var/backups/hybridflow
-              sudo chmod -R 775 /var/backups/hybridflow
 
-              BACKUP_DIR=/var/backups/hybridflow/\$(date +%Y-%m-%d_%H-%M-%S)
-              mkdir -p \"\$BACKUP_DIR\"
+              BACKUP_DIR=/var/backups/hybridflow/$(date +%Y-%m-%d_%H-%M-%S)
+              mkdir -p "$BACKUP_DIR"
 
-              # ======================================================
-              # 🗄 BACKUP ORACLE DESDE WINDOWS — ORCLPDB
-              # ======================================================
-              echo \"🗄 Respaldando ORACLE (ORCLPDB)...\"
-              DUMP_NAME=hybridflow_\$(date +%Y%m%d_%H%M%S)
-
-              sshpass -p \"UTNGRUPO02**\" ssh -o StrictHostKeyChecking=no Administrador@137.0.30.3 "
-                cd C:/app/oracle/product/19c/dbhome_1/BIN
-                echo '📦 Ejecutando EXPDP en ORCLPDB...'
-                ./expdp.exe GRUPO02/\\\"Grupo02*\\\"@//137.0.30.3:1521/orclpdb ^
-                  DIRECTORY=DATA_PUMP_DIR ^
-                  DUMPFILE=%DUMP_NAME%.dmp ^
-                  LOGFILE=%DUMP_NAME%.log ^
-                  SCHEMAS=GRUPO02 ^
-                  COMPRESSION=ALL
-              " || { echo \"❌ ERROR ejecutando expdp en Windows\"; exit 1; }
-
-              echo \"⬇ Descargando dump...\"
-              sshpass -p \"UTNGRUPO02**\" scp -o StrictHostKeyChecking=no \
-                Administrador@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/\${DUMP_NAME}.dmp\" \
-                \"\$BACKUP_DIR/\${DUMP_NAME}.dmp\" || exit 1
-
-              sshpass -p \"UTNGRUPO02**\" scp -o StrictHostKeyChecking=no \
-                Administrador@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/\${DUMP_NAME}.log\" \
-                \"\$BACKUP_DIR/\${DUMP_NAME}.log\" || exit 1
-
-              echo \"✔ Backup Oracle completado correctamente\"
-
+              DUMP_NAME=hybridflow_$(date +%Y%m%d_%H%M%S)
 
               # ======================================================
-              # 📁 DEPLOY DEL PROYECTO EN VMWARE (Producción)
+              # 🗄 BACKUP ORACLE (Windows via SSH)
               # ======================================================
-              cd /var/www/html/HybridFlow-OracleApp &&
-              git fetch origin main &&
-              git reset --hard origin/main &&
+              sshpass -p "UTNGRUPO02**" ssh -o StrictHostKeyChecking=no Administrador@137.0.30.3 << EOF_WIN
+              cd C:/app/oracle/product/19c/dbhome_1/BIN
+              expdp.exe GRUPO02/"Grupo02*"@//137.0.30.3:1521/orclpdb DIRECTORY=DATA_PUMP_DIR DUMPFILE=${DUMP_NAME}.dmp LOGFILE=${DUMP_NAME}.log SCHEMAS=GRUPO02 COMPRESSION=ALL
+              EOF_WIN
+
+              # ======================================================
+              # 📥 DESCARGAR DUMP
+              # ======================================================
+              sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no \
+                Administrador@137.0.30.3:"C:/app/oracle/admin/orcl/dpdump/${DUMP_NAME}.dmp" \
+                "$BACKUP_DIR/${DUMP_NAME}.dmp"
+
+              sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no \
+                Administrador@137.0.30.3:"C:/app/oracle/admin/orcl/dpdump/${DUMP_NAME}.log" \
+                "$BACKUP_DIR/${DUMP_NAME}.log"
+
+              echo "✔ Backup Oracle listo"
+
+              # ======================================================
+              # DEPLOY LARAVEL
+              # ======================================================
+              cd /var/www/html/HybridFlow-OracleApp
+              git fetch origin main
+              git reset --hard origin/main
               git pull origin main
 
               cd backend
-              sudo chown -R ubuntu:www-data storage bootstrap/cache
-              sudo chmod -R 775 storage bootstrap/cache
-
               composer install --no-interaction --prefer-dist --optimize-autoloader
 
-              # ======================================================
-              # 📦 INSTALAR YAJRA (OCI8) SI NO EXISTE
-              # ======================================================
-              if ! composer show | grep -q \"yajra/laravel-oci8\"; then
-                echo \"📦 Instalando Yajra Oracle OCI8 automáticamente...\"
-                composer require yajra/laravel-oci8:\"^9.5\" --no-interaction
-              else
-                echo \"🔎 Yajra ya está instalado en PRODUCCIÓN.\"
-              fi
-
-              # ======================================================
-              # 🧹 LIMPIEZA Y OPTIMIZACIÓN
-              # ======================================================
-              php artisan config:clear
-              php artisan cache:clear
               php artisan optimize:clear
               php artisan config:cache
 
-              # ======================================================
-              # 🔌 TEST CLI ORACLE
-              # ======================================================
-              php artisan tinker --execute=\"DB::connection()->getPdo();\" \
-                && echo \"✔ Oracle OK en CLI\" \
-                || { echo \"❌ Oracle FAIL\"; exit 1; }
+              php artisan tinker --execute="DB::connection()->getPdo();" \
+                && echo "Oracle OK CLI" || exit 1
 
-              # ======================================================
-              # 🧬 MIGRACIONES SI PROCEDEN
-              # ======================================================
-              if [ \"${RUN_MIGRATIONS}\" = \"yes\" ]; then
-                echo \"🛠 Ejecutando migraciones...\"
+              if [ "${RUN_MIGRATIONS}" = "yes" ]; then
                 php artisan migrate --force
               fi
 
-              echo \"✔ DEPLOY COMPLETADO EN PRODUCCIÓN\"
-            '
-          "
-
-      # ======================================================
-      # HEALTH CHECK WEB (Verifica Oracle desde Laravel - FPM)
-      # ======================================================
-      - name: Health Check Oracle (Proxmox → VMware vía túnel)
-        run: |
-          echo "🔍 Ejecutando Health Check Oracle vía túnel..."
-          ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 "
-            ssh -p 43000 -o StrictHostKeyChecking=no ubuntu@localhost '
-              RESP=\$(curl -s http://127.0.0.1/oracle-test)
-              echo \"Respuesta del endpoint: \$RESP\"
-              if echo \"\$RESP\" | grep -q \"Conectado a Oracle correctamente\"; then
-                echo \"✔ Oracle OK en PRODUCCIÓN (WEB)\"
-              else
-                echo \"❌ Oracle NO responde en PRODUCCIÓN (WEB)\"
-                exit 1
-              fi
-            '
-          "
+              echo "✔ DEPLOY COMPLETADO"
+          EOF_VMWARE
+          EOF_MAIN
