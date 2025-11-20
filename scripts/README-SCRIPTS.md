@@ -109,3 +109,8 @@ Cumple con estándares reales de DevOps.
 🏁 5. Estado final
 Estos scripts están probados, integrados al CI/CD y forman parte del entregable técnico del proyecto.
 Permiten demostrar un flujo profesional de despliegue, backup y validación de base de datos Oracle.
+
+
+
+
+PRUEBA DE SCRIPTS
