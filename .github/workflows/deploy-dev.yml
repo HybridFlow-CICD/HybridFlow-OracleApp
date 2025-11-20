@@ -316,3 +316,38 @@ jobs:
               fi
             "
           '
+
+  notify-discord:
+    name: Notificar a Discord
+    needs: [deploy-prod]
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Enviar notificación a Discord
+        run: |
+          STATUS="${{ job.status }}"
+          COLOR="16711680" # rojo
+
+          if [ "$STATUS" = "success" ]; then
+            COLOR="3066993" # verde
+          fi
+
+          PAYLOAD=$(jq -n \
+            --arg content "**CI/CD HybridFlow**" \
+            --arg status "$STATUS" \
+            --arg url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --argjson color "$COLOR" \
+            '{content: $content,
+              embeds: [
+                {
+                  title: "Estado del Pipeline",
+                  description: ("Resultado: **" + $status + "**\n[Ver ejecución](" + $url + ")"),
+                  color: $color
+                }
+              ]
+            }')
+
+          curl -H "Content-Type: application/json" \
+              -d "$PAYLOAD" \
+              ${{ secrets.DISCORD_WEBHOOK }}
