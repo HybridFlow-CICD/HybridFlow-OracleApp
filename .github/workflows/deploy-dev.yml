@@ -118,12 +118,12 @@ jobs:
             # FRONTEND DEV
             # =========================
             cd frontend
-            npm install --legacy-peer-deps
+            npm ci --legacy-peer-deps
             npm run build
 
-            sudo rm -rf /var/www/html/frontend-app
+            sudo rm -rf /var/www/html/frontend-app/*
             sudo mkdir -p /var/www/html/frontend-app
-            sudo cp -r dist/* /var/www/html/frontend-app/
+            sudo cp -r build/* /var/www/html/frontend-app/
 
             echo '✔ Frontend actualizado en DEV'
 
