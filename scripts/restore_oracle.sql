@@ -1,0 +1,12 @@
+-- Ejecutar en ORCLPDB
+ALTER SESSION SET CONTAINER = ORCLPDB;
+
+-- Crear tablespace temporal
+CREATE TABLESPACE recover DATAFILE 'recover01.dbf' SIZE 500M AUTOEXTEND ON;
+
+-- Importar
+impdp GRUPO02/"Grupo02*" \
+  DIRECTORY=DATA_PUMP_DIR \
+  DUMPFILE=<<AQUI_EL_DUMP>> \
+  LOGFILE=restore.log \
+  REMAP_SCHEMA=GRUPO02:GRUPO02
