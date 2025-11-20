@@ -200,7 +200,7 @@ jobs:
       - name: Esperando...
         run: sleep ${{ steps.calc.outputs.wait_seconds }}
 
-    # ======================================================
+  # ======================================================
   # DEPLOY PRODUCCIÓN + BACKUP ORACLE
   # ======================================================
   deploy-prod:
@@ -260,7 +260,7 @@ jobs:
 
               sudo rm -rf /var/www/html/frontend-app
               sudo mkdir -p /var/www/html/frontend-app
-              sudo cp -r dist/* /var/www/html/frontend-app/
+              sudo cp -r build/* /var/www/html/frontend-app/
 
               echo "✔ Frontend desplegado en PRODUCCIÓN"
 
@@ -270,7 +270,7 @@ jobs:
               cd /var/www/html/HybridFlow-OracleApp/backend
 
               sudo chown -R ubuntu:www-data storage bootstrap/cache
-              sudo chmod -R 775 storage/bootstrap/cache
+              sudo chmod -R 775 storage bootstrap/cache
 
               composer install --no-interaction --prefer-dist --optimize-autoloader
 
@@ -283,6 +283,7 @@ jobs:
               php artisan optimize:clear
               php artisan config:cache
 
+              echo "🔌 Probando conexión Oracle desde CLI..."
               php artisan tinker --execute="DB::connection()->getPdo();" \
                 && echo "✔ Oracle OK CLI" \
                 || { echo "❌ Oracle FAIL CLI"; exit 1; }
