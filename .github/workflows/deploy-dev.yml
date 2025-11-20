@@ -106,26 +106,53 @@ jobs:
           echo "🚀 Deploy en DEV..."
           ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 "
             set -e
-            cd /var/www/html/HybridFlow-OracleApp &&
-            git fetch origin develop &&
-            git reset --hard origin/develop &&
-            git pull origin develop &&
-            cd backend &&
-            sudo chown -R ubuntu:www-data storage bootstrap/cache &&
-            sudo chmod -R 775 storage bootstrap/cache &&
-            composer install --no-interaction --prefer-dist --optimize-autoloader &&
+
+            echo '➡ DEPLOY FRONTEND DEV'
+
+            cd /var/www/html/HybridFlow-OracleApp
+            git fetch origin develop
+            git reset --hard origin/develop
+            git pull origin develop
+
+            # =========================
+            # FRONTEND DEV
+            # =========================
+            cd frontend
+            npm ci --legacy-peer-deps
+            npm run build
+
+            sudo rm -rf /var/www/html/frontend-app/*
+            sudo mkdir -p /var/www/html/frontend-app
+            sudo cp -r build/* /var/www/html/frontend-app/
+
+            echo '✔ Frontend actualizado en DEV'
+
+            # =========================
+            # BACKEND DEV (LARAVEL)
+            # =========================
+            cd /var/www/html/HybridFlow-OracleApp/backend
+
+            sudo chown -R ubuntu:www-data storage bootstrap/cache
+            sudo chmod -R 775 storage bootstrap/cache
+
+            composer install --no-interaction --prefer-dist --optimize-autoloader
+
             if ! composer show | grep -q 'yajra/laravel-oci8'; then
               composer require yajra/laravel-oci8:\"^9.5\" --no-interaction
-            fi &&
-            php artisan config:clear &&
-            php artisan cache:clear &&
-            php artisan optimize:clear &&
-            php artisan config:cache &&
-            php artisan tinker --execute=\"DB::connection()->getPdo();\" &&
-            echo 'Oracle OK en DEV.' ||
-            (echo '❌ Oracle FAIL en DEV'; exit 1)
+            fi
+
+            php artisan config:clear
+            php artisan cache:clear
+            php artisan optimize:clear
+            php artisan config:cache
+
+            php artisan tinker --execute=\"DB::connection()->getPdo();\" \
+              && echo 'Oracle OK en DEV.' \
+              || { echo '❌ Oracle FAIL en DEV'; exit 1; }
+
             php artisan migrate --force
           "
+
 
   # ======================================================
   # ESPERAR HASTA LA HORA PROGRAMADA
@@ -190,23 +217,16 @@ jobs:
         run: |
           echo "⚡ Ejecutando deploy en PRODUCCIÓN vía túnel SSH..."
 
-          # ================================
-          # 1️⃣ PRIMER SALTO → PROXMOX
-          # ================================
           ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 '
             echo "➡ Entrando a Proxmox. Ahora salto a VMware por el túnel :43000"
 
-            # ================================
-            # 2️⃣ SEGUNDO SALTO → VMWARE
-            # (via túnel reverse)
-            # ================================
             ssh -p 43000 -o StrictHostKeyChecking=no ubuntu@localhost << EOF
               set -e
 
               echo "🚀 DEPLOY INICIADO EN VMWARE PRODUCCIÓN"
 
               # ======================================================
-              # 🗂 BACKUP ORACLE EN WINDOWS SERVER
+              # BACKUP ORACLE (Windows)
               # ======================================================
               sudo apt-get update -y
               sudo apt-get install -y sshpass
@@ -224,23 +244,30 @@ jobs:
                 ./expdp.exe GRUPO02/\\\"Grupo02*\\\" DIRECTORY=DATA_PUMP_DIR DUMPFILE=\$DUMP_NAME.dmp LOGFILE=\$DUMP_NAME.log SCHEMAS=GRUPO02 COMPRESSION=ALL
               "
 
-              echo "⬇ Descargando dump (.dmp y .log)..."
-
               sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no Administrador@137.0.30.3:"C:/app/oracle/admin/orcl/dpdump/\$DUMP_NAME.dmp" "\$BACKUP_DIR/"
               sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no Administrador@137.0.30.3:"C:/app/oracle/admin/orcl/dpdump/\$DUMP_NAME.log" "\$BACKUP_DIR/"
 
               echo "✔ Backup Oracle guardado en: \$BACKUP_DIR"
 
               # ======================================================
-              # 📁 DEPLOY DEL CÓDIGO LARAVEL
+              # DEPLOY FRONTEND (PRODUCCIÓN)
               # ======================================================
-              cd /var/www/html/HybridFlow-OracleApp
+              echo "➡ Instalando dependencias FRONTEND PROD"
+              cd /var/www/html/HybridFlow-OracleApp/frontend
 
-              git fetch origin main
-              git reset --hard origin/main
-              git pull origin main
+              npm install --legacy-peer-deps
+              npm run build
 
-              cd backend
+              sudo rm -rf /var/www/html/frontend-app
+              sudo mkdir -p /var/www/html/frontend-app
+              sudo cp -r build/* /var/www/html/frontend-app/
+
+              echo "✔ Frontend desplegado en PRODUCCIÓN"
+
+              # ======================================================
+              # DEPLOY BACKEND (LARAVEL)
+              # ======================================================
+              cd /var/www/html/HybridFlow-OracleApp/backend
 
               sudo chown -R ubuntu:www-data storage bootstrap/cache
               sudo chmod -R 775 storage bootstrap/cache
