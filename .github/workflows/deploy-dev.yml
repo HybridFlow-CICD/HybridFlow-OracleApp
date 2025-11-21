@@ -274,25 +274,24 @@ jobs:
 
               composer install --no-interaction --prefer-dist --optimize-autoloader
 
-              if ! composer show | grep -q yajra/laravel-oci8; then
-                composer require yajra/laravel-oci8:"^9.5" --no-interaction
-              fi
+          if ! composer show | grep -q yajra/laravel-oci8; then
+            composer require yajra/laravel-oci8:"^9.5" --no-interaction
+          fi
 
-              php artisan config:clear
-              php artisan cache:clear
-              php artisan optimize:clear
-              php artisan config:cache
+          php artisan config:clear
+          php artisan cache:clear
+          php artisan optimize:clear
+          php artisan config:cache
 
-              echo "🔌 Probando conexión Oracle desde CLI..."
-              php artisan tinker --execute="DB::connection()->getPdo();" \
-                && echo "✔ Oracle OK CLI" \
-                || { echo "❌ Oracle FAIL CLI"; exit 1; }
+          echo "🔌 Probando conexión Oracle desde CLI..."
+          php artisan tinker --execute="DB::connection()->getPdo();" \
+            && echo "✔ Oracle OK CLI" \
+            || { echo "❌ Oracle FAIL CLI"; exit 1; }
 
-              if [ "$RUN_MIGRATIONS" = "yes" ]; then
-                php artisan migrate --force
-              fi
+          echo "🛠 Ejecutando migraciones en PRODUCCIÓN..."
+          php artisan migrate --force
 
-              echo "✔ DEPLOY COMPLETADO EN PRODUCCIÓN"
+          echo "✔ DEPLOY COMPLETADO EN PRODUCCIÓN"
             EOF
           '
 
