@@ -200,9 +200,6 @@ jobs:
       - name: Esperando...
         run: sleep ${{ steps.calc.outputs.wait_seconds }}
 
-  # ======================================================
-  # DEPLOY PRODUCCIÓN + BACKUP ORACLE
-  # ======================================================
   deploy-prod:
     name: Deploy to Production (VMware via SSH Tunnel)
     needs: wait-for-prod
@@ -220,41 +217,34 @@ jobs:
           ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 '
             echo "➡ Entrando a Proxmox. Ahora salto a VMware por el túnel :43000"
 
-            ssh -p 43000 -o StrictHostKeyChecking=no ubuntu@localhost << EOF
+            ssh -p 43000 -o StrictHostKeyChecking=no ubuntu@localhost << "EOF"
               set -e
 
               echo "🚀 DEPLOY INICIADO EN VMWARE PRODUCCIÓN"
 
-              # ======================================================
-              # BACKUP ORACLE (Windows)
-              # ======================================================
+              # === BACKUP ORACLE ===
               sudo apt-get update -y
               sudo apt-get install -y sshpass
 
-              DUMP_NAME=hybridflow_\$(date +%Y%m%d_%H%M%S)
-              BACKUP_DIR=/var/backups/hybridflow/\$DUMP_NAME
+              DUMP_NAME=hybridflow_$(date +%Y%m%d_%H%M%S)
+              BACKUP_DIR=/var/backups/hybridflow/$DUMP_NAME
 
-              sudo mkdir -p "\$BACKUP_DIR"
-              sudo chown ubuntu:ubuntu "\$BACKUP_DIR"
+              sudo mkdir -p "$BACKUP_DIR"
+              sudo chown ubuntu:ubuntu "$BACKUP_DIR"
 
               echo "📦 Ejecutando EXPDP en Windows Server..."
-
               sshpass -p "UTNGRUPO02**" ssh -o StrictHostKeyChecking=no Administrador@137.0.30.3 "
                 cd 'C:/app/oracle/product/19c/dbhome_1/BIN'
-                ./expdp.exe GRUPO02/\\\"Grupo02*\\\" DIRECTORY=DATA_PUMP_DIR DUMPFILE=\$DUMP_NAME.dmp LOGFILE=\$DUMP_NAME.log SCHEMAS=GRUPO02 COMPRESSION=ALL
+                ./expdp.exe GRUPO02/\\\"Grupo02*\\\" DIRECTORY=DATA_PUMP_DIR DUMPFILE=$DUMP_NAME.dmp LOGFILE=$DUMP_NAME.log SCHEMAS=GRUPO02 COMPRESSION=ALL
               "
 
-              sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no Administrador@137.0.30.3:"C:/app/oracle/admin/orcl/dpdump/\$DUMP_NAME.dmp" "\$BACKUP_DIR/"
-              sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no Administrador@137.0.30.3:"C:/app/oracle/admin/orcl/dpdump/\$DUMP_NAME.log" "\$BACKUP_DIR/"
+              sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no Administrador@137.0.30.3:"C:/app/oracle/admin/orcl/dpdump/$DUMP_NAME.dmp" "$BACKUP_DIR/"
+              sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no Administrador@137.0.30.3:"C:/app/oracle/admin/orcl/dpdump/$DUMP_NAME.log" "$BACKUP_DIR/"
 
-              echo "✔ Backup Oracle guardado en: \$BACKUP_DIR"
+              echo "✔ Backup Oracle guardado en: $BACKUP_DIR"
 
-              # ======================================================
-              # DEPLOY FRONTEND (PRODUCCIÓN)
-              # ======================================================
-              echo "➡ Instalando dependencias FRONTEND PROD"
+              # === FRONTEND ===
               cd /var/www/html/HybridFlow-OracleApp/frontend
-
               npm install --legacy-peer-deps
               npm run build
 
@@ -264,9 +254,7 @@ jobs:
 
               echo "✔ Frontend desplegado en PRODUCCIÓN"
 
-              # ======================================================
-              # DEPLOY BACKEND (LARAVEL)
-              # ======================================================
+              # === BACKEND ===
               cd /var/www/html/HybridFlow-OracleApp/backend
 
               sudo chown -R ubuntu:www-data storage bootstrap/cache
@@ -295,9 +283,7 @@ jobs:
             EOF
           '
 
-      # ======================================================
-      # HEALTH CHECK DESDE PROXMOX → VMWARE (vía túnel)
-      # ======================================================
+      # ========= HEALTH CHECK (UNA SOLA VEZ) =========
       - name: Health Check Oracle (Proxmox → VMware vía túnel)
         run: |
           echo "🔍 Ejecutando Health Check Oracle vía túnel..."
@@ -316,26 +302,6 @@ jobs:
             "
           '
 
-      # ======================================================
-      # HEALTH CHECK DESDE PROXMOX → VMWARE (vía túnel)
-      # ======================================================
-      - name: Health Check Oracle (Proxmox → VMware vía túnel)
-        run: |
-          echo "🔍 Ejecutando Health Check Oracle vía túnel..."
-
-          ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 '
-            ssh -p 43000 -o StrictHostKeyChecking=no ubuntu@localhost "
-              RESP=\$(curl -s http://127.0.0.1/oracle-test)
-              echo \"Respuesta del endpoint: \$RESP\"
-
-              if echo \"\$RESP\" | grep -q \"Conectado a Oracle correctamente\"; then
-                echo \"✔ Oracle OK en PRODUCCIÓN (WEB)\"
-              else
-                echo \"❌ Oracle NO responde en PRODUCCIÓN (WEB)\"
-                exit 1
-              fi
-            "
-          '
 
   notify-discord:
     name: Notificar a Discord
