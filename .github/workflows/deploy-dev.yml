@@ -212,7 +212,7 @@ jobs:
     steps:
       - name: Deploy a PRODUCCIÓN (via túnel SSH reverse)
         env:
-          RUN_MIGRATIONS: ${{ needs.wait-for-prod.outputs.run_migrations }}
+          RUN_MIGRATIONS: yes
 
         run: |
           echo "⚡ Ejecutando deploy en PRODUCCIÓN vía túnel SSH..."
@@ -274,25 +274,46 @@ jobs:
 
               composer install --no-interaction --prefer-dist --optimize-autoloader
 
-          if ! composer show | grep -q yajra/laravel-oci8; then
-            composer require yajra/laravel-oci8:"^9.5" --no-interaction
-          fi
+              if ! composer show | grep -q yajra/laravel-oci8; then
+                composer require yajra/laravel-oci8:"^9.5" --no-interaction
+              fi
 
-          php artisan config:clear
-          php artisan cache:clear
-          php artisan optimize:clear
-          php artisan config:cache
+              php artisan config:clear
+              php artisan cache:clear
+              php artisan optimize:clear
+              php artisan config:cache
 
-          echo "🔌 Probando conexión Oracle desde CLI..."
-          php artisan tinker --execute="DB::connection()->getPdo();" \
-            && echo "✔ Oracle OK CLI" \
-            || { echo "❌ Oracle FAIL CLI"; exit 1; }
+              echo "🔌 Probando conexión Oracle desde CLI..."
+              php artisan tinker --execute="DB::connection()->getPdo();" \
+                && echo "✔ Oracle OK CLI" \
+                || { echo "❌ Oracle FAIL CLI"; exit 1; }
 
-          echo "🛠 Ejecutando migraciones en PRODUCCIÓN..."
-          php artisan migrate --force
+              echo "🛠 Ejecutando migraciones en PRODUCCIÓN..."
+              php artisan migrate --force
 
-          echo "✔ DEPLOY COMPLETADO EN PRODUCCIÓN"
+              echo "✔ DEPLOY COMPLETADO EN PRODUCCIÓN"
             EOF
+          '
+
+      # ======================================================
+      # HEALTH CHECK DESDE PROXMOX → VMWARE (vía túnel)
+      # ======================================================
+      - name: Health Check Oracle (Proxmox → VMware vía túnel)
+        run: |
+          echo "🔍 Ejecutando Health Check Oracle vía túnel..."
+
+          ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 '
+            ssh -p 43000 -o StrictHostKeyChecking=no ubuntu@localhost "
+              RESP=\$(curl -s http://127.0.0.1/oracle-test)
+              echo \"Respuesta del endpoint: \$RESP\"
+
+              if echo \"\$RESP\" | grep -q \"Conectado a Oracle correctamente\"; then
+                echo \"✔ Oracle OK en PRODUCCIÓN (WEB)\"
+              else
+                echo \"❌ Oracle NO responde en PRODUCCIÓN (WEB)\"
+                exit 1
+              fi
+            "
           '
 
       # ======================================================
