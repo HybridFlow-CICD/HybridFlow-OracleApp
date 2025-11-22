@@ -219,73 +219,74 @@ jobs:
         run: |
           echo "⚡ Ejecutando deploy en PRODUCCIÓN vía túnel SSH..."
 
-          ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 '
+          ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 << 'OUTER'
             echo "➡ Entrando a Proxmox. Ahora salto a VMware por el túnel :43000"
 
-                  ssh -p 43000 -o StrictHostKeyChecking=no ubuntu@localhost << "EOF"
-          set -e
+            ssh -p 43000 -o StrictHostKeyChecking=no ubuntu@localhost << 'INNER'
+              set -e
 
-          echo "🚀 DEPLOY INICIADO EN VMWARE PRODUCCIÓN"
+              echo "🚀 DEPLOY INICIADO EN VMWARE PRODUCCIÓN"
 
-          # === BACKUP ORACLE ===
-          sudo apt-get update -y
-          sudo apt-get install -y sshpass
+              # === BACKUP ORACLE ===
+              sudo apt-get update -y
+              sudo apt-get install -y sshpass
 
-          DUMP_NAME=hybridflow_$(date +%Y%m%d_%H%M%S)
-          BACKUP_DIR=/var/backups/hybridflow/$DUMP_NAME
+              DUMP_NAME=hybridflow_$(date +%Y%m%d_%H%M%S)
+              BACKUP_DIR=/var/backups/hybridflow/$DUMP_NAME
 
-          sudo mkdir -p "$BACKUP_DIR"
-          sudo chown ubuntu:ubuntu "$BACKUP_DIR"
+              sudo mkdir -p "$BACKUP_DIR"
+              sudo chown ubuntu:ubuntu "$BACKUP_DIR"
 
-          echo "📦 Ejecutando EXPDP en Windows Server..."
-          sshpass -p "UTNGRUPO02**" ssh -o StrictHostKeyChecking=no Administrador@137.0.30.3 "
-            cd 'C:/app/oracle/product/19c/dbhome_1/BIN'
-            ./expdp.exe GRUPO02/\\\"Grupo02*\\\" DIRECTORY=DATA_PUMP_DIR DUMPFILE=$DUMP_NAME.dmp LOGFILE=$DUMP_NAME.log SCHEMAS=GRUPO02 COMPRESSION=ALL
-          "
+              echo "📦 Ejecutando EXPDP en Windows Server..."
+              sshpass -p "UTNGRUPO02**" ssh -o StrictHostKeyChecking=no Administrador@137.0.30.3 "
+                cd 'C:/app/oracle/product/19c/dbhome_1/BIN'
+                ./expdp.exe GRUPO02/\\\"Grupo02*\\\" DIRECTORY=DATA_PUMP_DIR DUMPFILE=$DUMP_NAME.dmp LOGFILE=$DUMP_NAME.log SCHEMAS=GRUPO02 COMPRESSION=ALL
+              "
 
-          sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no Administrador@137.0.30.3:"C:/app/oracle/admin/orcl/dpdump/$DUMP_NAME.dmp" "$BACKUP_DIR/"
-          sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no Administrador@137.0.30.3:"C:/app/oracle/admin/orcl/dpdump/$DUMP_NAME.log" "$BACKUP_DIR/"
+              sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no Administrador@137.0.30.3:"C:/app/oracle/admin/orcl/dpdump/$DUMP_NAME.dmp" "$BACKUP_DIR/"
+              sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no Administrador@137.0.30.3:"C:/app/oracle/admin/orcl/dpdump/$DUMP_NAME.log" "$BACKUP_DIR/"
 
-          echo "✔ Backup Oracle guardado en: $BACKUP_DIR"
+              echo "✔ Backup Oracle guardado en: $BACKUP_DIR"
 
-          # === FRONTEND ===
-          cd /var/www/html/HybridFlow-OracleApp/frontend
-          npm install --legacy-peer-deps
-          npm run build
+              # === FRONTEND ===
+              cd /var/www/html/HybridFlow-OracleApp/frontend
+              npm install --legacy-peer-deps
+              npm run build
 
-          sudo rm -rf /var/www/html/frontend-app
-          sudo mkdir -p /var/www/html/frontend-app
-          sudo cp -r build/* /var/www/html/frontend-app/
+              sudo rm -rf /var/www/html/frontend-app
+              sudo mkdir -p /var/www/html/frontend-app
+              sudo cp -r build/* /var/www/html/frontend-app/
 
-          echo "✔ Frontend desplegado en PRODUCCIÓN"
+              echo "✔ Frontend desplegado en PRODUCCIÓN"
 
-          # === BACKEND ===
-          cd /var/www/html/HybridFlow-OracleApp/backend
+              # === BACKEND ===
+              cd /var/www/html/HybridFlow-OracleApp/backend
 
-          sudo chown -R ubuntu:www-data storage bootstrap/cache
-          sudo chmod -R 775 storage bootstrap/cache
+              sudo chown -R ubuntu:www-data storage bootstrap/cache
+              sudo chmod -R 775 storage bootstrap/cache
 
-          composer install --no-interaction --prefer-dist --optimize-autoloader
+              composer install --no-interaction --prefer-dist --optimize-autoloader
 
-          if ! composer show | grep -q yajra/laravel-oci8; then
-            composer require yajra/laravel-oci8:"^9.5" --no-interaction
-          fi
+              if ! composer show | grep -q yajra/laravel-oci8; then
+                composer require yajra/laravel-oci8:"^9.5" --no-interaction
+              fi
 
-          php artisan config:clear
-          php artisan cache:clear
-          php artisan optimize:clear
-          php artisan config:cache
+              php artisan config:clear
+              php artisan cache:clear
+              php artisan optimize:clear
+              php artisan config:cache
 
-          echo "🔌 Probando conexión Oracle desde CLI..."
-          php artisan tinker --execute="DB::connection()->getPdo();" \
-            && echo "✔ Oracle OK CLI" \
-            || { echo "❌ Oracle FAIL CLI"; exit 1; }
+              echo "🔌 Probando conexión Oracle desde CLI..."
+              php artisan tinker --execute="DB::connection()->getPdo();" \
+                && echo "✔ Oracle OK CLI" \
+                || { echo "❌ Oracle FAIL CLI"; exit 1; }
 
-          echo "🛠 Ejecutando migraciones en PRODUCCIÓN..."
-          php artisan migrate --force
+              echo "🛠 Ejecutando migraciones en PRODUCCIÓN..."
+              php artisan migrate --force
 
-          echo "✔ DEPLOY COMPLETADO EN PRODUCCIÓN"
-          EOF
+              echo "✔ DEPLOY COMPLETADO EN PRODUCCIÓN"
+            INNER
+          OUTER
 
 
       # ========= HEALTH CHECK (UNA SOLA VEZ) =========
@@ -293,7 +294,7 @@ jobs:
         run: |
           echo "🔍 Ejecutando Health Check Oracle vía túnel..."
 
-          ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 '
+          ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 << 'CHECK'
             ssh -p 43000 -o StrictHostKeyChecking=no ubuntu@localhost "
               RESP=\$(curl -s http://127.0.0.1/oracle-test)
               echo \"Respuesta del endpoint: \$RESP\"
@@ -305,7 +306,8 @@ jobs:
                 exit 1
               fi
             "
-          '
+          CHECK
+
 
 
   notify-discord:
