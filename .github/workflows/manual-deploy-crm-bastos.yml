@@ -1,0 +1,49 @@
+name: Manual Deploy CRM Bastos (Windows + SQL Server)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: self-hosted   # Runner Proxmox (10.50.31.26)
+
+    steps:
+
+      - name: Checkout código (main)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Preparar artifact
+        run: |
+          rm -rf artifact
+          mkdir artifact
+
+          shopt -s dotglob
+          for f in *; do
+            if [[ "$f" != ".git" && "$f" != ".github" && "$f" != "artifact" ]]; then
+              cp -R "$f" artifact/
+            fi
+          done
+
+      - name: Ejecutar backup SQL en producción
+        run: |
+          ssh -p 43000 -o StrictHostKeyChecking=no Administrador@localhost "powershell C:\scripts\backup-sql.ps1"
+
+      - name: Enviar artifact al servidor de producción
+        run: |
+          ssh -p 43000 -o StrictHostKeyChecking=no Administrador@localhost "if (!(Test-Path C:\deploy\artifact)) { mkdir C:\deploy\artifact }"
+          scp -P 43000 -o StrictHostKeyChecking=no -r artifact/* Administrador@localhost:"C:/deploy/artifact/"
+
+      - name: Ejecutar deploy en WSSERVER
+        run: |
+          ssh -p 43000 -o StrictHostKeyChecking=no Administrador@localhost "powershell C:\scripts\deploy.ps1"
+
+      - name: Validar health-check
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://137.0.30.8/)
+          if [ "$STATUS" -ne 200 ]; then
+            echo "Health-check falló: código $STATUS"
+            exit 1
+          fi
+          echo "Health-check OK con código $STATUS"
