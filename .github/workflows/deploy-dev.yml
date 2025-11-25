@@ -201,7 +201,7 @@ jobs:
         run: sleep ${{ steps.calc.outputs.wait_seconds }}
 
 
-   # ======================================================
+    # ======================================================
   # Deploy Producción (VMware via SSH Tunnel)
   # ======================================================
 
@@ -215,14 +215,16 @@ jobs:
       - name: Deploy a PRODUCCIÓN (via túnel SSH reverse)
         env:
           RUN_MIGRATIONS: yes
+          GH_USER: ${{ secrets.GH_USER }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
 
         run: |
           echo "⚡ Ejecutando deploy en PRODUCCIÓN vía túnel SSH..."
 
-          ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 << 'OUTER'
+          ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 << OUTER
             echo "➡ Entrando a Proxmox. Saltando a VMware por el túnel :43000"
 
-            ssh -p 43000 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@localhost << 'INNER'
+            ssh -p 43000 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@localhost << INNER
               set -e
               echo "🚀 DEPLOY INICIADO EN VMWARE PRODUCCIÓN"
 
@@ -232,11 +234,15 @@ jobs:
               cd /var/www/html/HybridFlow-OracleApp
               echo "📥 Descargando últimas actualizaciones (HTTPS)..."
 
-              # Usar el remote origin (con credenciales guardadas)
+              # CONFIGURAR ORIGIN CON TOKEN (IMPORTANTE)
+              git remote remove origin || true
+              git remote add origin https://${GH_USER}:${GH_TOKEN}@github.com/HybridFlow-CICD/HybridFlow-OracleApp.git
+
               git fetch origin main
               git reset --hard origin/main
 
               echo "✔ Código actualizado desde MAIN correctamente"
+
 
               # ==================================
               # BACKUP ORACLE
@@ -244,26 +250,27 @@ jobs:
               sudo apt-get update -y
               sudo apt-get install -y sshpass
 
-              DUMP_NAME=hybridflow_$(date +%Y%m%d_%H%M%S)
-              BACKUP_DIR=/var/backups/hybridflow/$DUMP_NAME
+              DUMP_NAME=hybridflow_\$(date +%Y%m%d_%H%M%S)
+              BACKUP_DIR=/var/backups/hybridflow/\$DUMP_NAME
 
-              sudo mkdir -p "$BACKUP_DIR"
-              sudo chown ubuntu:ubuntu "$BACKUP_DIR"
+              sudo mkdir -p "\$BACKUP_DIR"
+              sudo chown ubuntu:ubuntu "\$BACKUP_DIR"
 
               echo "📦 Ejecutando EXPDP en Windows Server..."
               sshpass -p "UTNGRUPO02**" ssh -o StrictHostKeyChecking=no Administrador@137.0.30.3 "
                 cd 'C:/app/oracle/product/19c/dbhome_1/BIN'
                 ./expdp.exe GRUPO02/\\\"Grupo02*\\\" DIRECTORY=DATA_PUMP_DIR \
-                DUMPFILE=$DUMP_NAME.dmp LOGFILE=$DUMP_NAME.log \
+                DUMPFILE=\$DUMP_NAME.dmp LOGFILE=\$DUMP_NAME.log \
                 SCHEMAS=GRUPO02 COMPRESSION=ALL
               "
 
               sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no \
-                Administrador@137.0.30.3:"C:/app/oracle/admin/orcl/dpdump/$DUMP_NAME.dmp" "$BACKUP_DIR/"
+                Administrador@137.0.30.3:"C:/app/oracle/admin/orcl/dpdump/\$DUMP_NAME.dmp" "\$BACKUP_DIR/"
               sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no \
-                Administrador@137.0.30.3:"C:/app/oracle/admin/orcl/dpdump/$DUMP_NAME.log" "$BACKUP_DIR/"
+                Administrador@137.0.30.3:"C:/app/oracle/admin/orcl/dpdump/\$DUMP_NAME.log" "\$BACKUP_DIR/"
 
-              echo "✔ Backup Oracle guardado en: $BACKUP_DIR"
+              echo "✔ Backup Oracle guardado en: \$BACKUP_DIR"
+
 
               # ==================================
               # FRONTEND
@@ -278,6 +285,7 @@ jobs:
 
               echo "✔ Frontend desplegado en PRODUCCIÓN"
 
+
               # ==================================
               # BACKEND (Laravel)
               # ==================================
@@ -291,6 +299,7 @@ jobs:
               if ! composer show | grep -q yajra/laravel-oci8; then
                 composer require yajra/laravel-oci8:"^9.5" --no-interaction
               fi
+
 
               # ==================================
               # OCI8 SOLO SE INSTALA SI FALTA
@@ -343,6 +352,7 @@ jobs:
               fi
             "
           CHECK
+
 
 
 
