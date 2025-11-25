@@ -222,7 +222,7 @@ jobs:
           ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 << 'OUTER'
             echo "➡ Entrando a Proxmox. Saltando a VMware por el túnel :43000"
 
-            ssh -p 43000 \ -o StrictHostKeyChecking=no \ -o UserKnownHostsFile=/dev/null \ ubuntu@localhost << 'INNER'
+            ssh -p 43000 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@localhost << 'INNER'
               set -e
               echo "🚀 DEPLOY INICIADO EN VMWARE PRODUCCIÓN"
 
