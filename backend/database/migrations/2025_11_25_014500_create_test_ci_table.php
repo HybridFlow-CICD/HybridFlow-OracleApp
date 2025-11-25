@@ -6,17 +6,17 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    public function up()
+    public function up(): void
     {
-        Schema::create('pruebas_ci_cd', function (Blueprint $table) {
+        Schema::create('test_ci', function (Blueprint $table) {
             $table->id();
             $table->string('nombre')->nullable();
             $table->timestamps();
         });
     }
 
-    public function down()
+    public function down(): void
     {
-        Schema::dropIfExists('pruebas_ci_cd');
+        Schema::dropIfExists('test_ci');
     }
 };
