@@ -201,7 +201,7 @@ jobs:
         run: sleep ${{ steps.calc.outputs.wait_seconds }}
 
 
-    # ======================================================
+  # ======================================================
   # Deploy Producción (VMware via SSH Tunnel)
   # ======================================================
 
@@ -215,8 +215,6 @@ jobs:
       - name: Deploy a PRODUCCIÓN (via túnel SSH reverse)
         env:
           RUN_MIGRATIONS: yes
-          GH_USER: ${{ secrets.GH_USER }}
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
 
         run: |
           echo "⚡ Ejecutando deploy en PRODUCCIÓN vía túnel SSH..."
@@ -234,9 +232,8 @@ jobs:
               cd /var/www/html/HybridFlow-OracleApp
               echo "📥 Descargando últimas actualizaciones (HTTPS)..."
 
-              # CONFIGURAR ORIGIN CON TOKEN (IMPORTANTE)
               git remote remove origin 2>/dev/null || true
-              git remote add origin "https://${GH_USER}:${GH_TOKEN}@github.com/HybridFlow-CICD/HybridFlow-OracleApp.git"
+              git remote add origin "https://github.com/HybridFlow-CICD/HybridFlow-OracleApp.git"
 
               git fetch origin main
               git reset --hard origin/main
@@ -247,7 +244,7 @@ jobs:
               # BACKUP ORACLE
               # ==================================
               sudo apt-get update -y
-              sudo apt-get install -y sshpass
+              sudo apt-get install -y sshpass unzip
 
               DUMP_NAME=hybridflow_$(date +%Y%m%d_%H%M%S)
               BACKUP_DIR=/var/backups/hybridflow/$DUMP_NAME
@@ -259,8 +256,8 @@ jobs:
               sshpass -p "UTNGRUPO02**" ssh -o StrictHostKeyChecking=no Administrador@137.0.30.3 "
                 cd 'C:/app/oracle/product/19c/dbhome_1/BIN'
                 ./expdp.exe GRUPO02/\\\"Grupo02*\\\" DIRECTORY=DATA_PUMP_DIR \
-                DUMPFILE=$DUMP_NAME.dmp LOGFILE=$DUMP_NAME.log \
-                SCHEMAS=GRUPO02 COMPRESSION=ALL
+                  DUMPFILE=$DUMP_NAME.dmp LOGFILE=$DUMP_NAME.log \
+                  SCHEMAS=GRUPO02 COMPRESSION=ALL
               "
 
               sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no \
@@ -348,10 +345,6 @@ jobs:
               fi
             "
           CHECK
-
-
-
-
 
   notify-discord:
     name: Notificar a Discord
