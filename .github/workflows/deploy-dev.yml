@@ -222,7 +222,11 @@ jobs:
           ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 << 'OUTER'
             echo "➡ Entrando a Proxmox. Saltando a VMware por el túnel :43000"
 
-            ssh -p 43000 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@localhost << 'INNER'
+            ssh -p 43000 \
+              -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              ubuntu@localhost << 'INNER'
+
               set -e
               echo "🚀 DEPLOY INICIADO EN VMWARE PRODUCCIÓN"
 
@@ -232,8 +236,9 @@ jobs:
               cd /var/www/html/HybridFlow-OracleApp
               echo "📥 Descargando últimas actualizaciones (HTTPS)..."
 
-              git fetch https://github.com/HybridFlow-CICD/HybridFlow-OracleApp.git main
-              git reset --hard FETCH_HEAD
+              git remote set-url origin https://github.com/HybridFlow-CICD/HybridFlow-OracleApp.git
+              git fetch --depth=1 origin main
+              git reset --hard origin/main
 
               echo "✔ Código actualizado desde MAIN correctamente"
 
@@ -326,10 +331,8 @@ jobs:
               php artisan migrate --force
 
               echo "✔ DEPLOY PRODUCCIÓN COMPLETADO"
-            INNER
+          INNER
           OUTER
-
-
       # ========= HEALTH CHECK =========
       - name: Health Check Oracle (Proxmox → VMware vía túnel)
         run: |
