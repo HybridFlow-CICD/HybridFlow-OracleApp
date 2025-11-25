@@ -215,6 +215,7 @@ jobs:
       - name: Deploy a PRODUCCIÓN (via túnel SSH reverse)
         env:
           RUN_MIGRATIONS: yes
+
         run: |
           echo "⚡ Ejecutando deploy en PRODUCCIÓN vía túnel SSH..."
 
@@ -223,14 +224,25 @@ jobs:
 
             ssh -p 43000 -o StrictHostKeyChecking=no ubuntu@localhost << 'INNER'
               set -e
-
               echo "🚀 DEPLOY INICIADO EN VMWARE PRODUCCIÓN"
+
+              # ==================================
+              # ACTUALIZAR CÓDIGO DESDE MAIN (HTTPS)
+              # ==================================
+              cd /var/www/html/HybridFlow-OracleApp
+              echo "📥 Descargando últimas actualizaciones (HTTPS)..."
+
+              git fetch https://github.com/HybridFlow-CICD/HybridFlow-OracleApp.git main
+              git reset --hard FETCH_HEAD
+
+              echo "✔ Código actualizado desde MAIN correctamente"
+
 
               # ==================================
               # BACKUP ORACLE
               # ==================================
               sudo apt-get update -y
-              sudo apt-get install -y sshpass unzip
+              sudo apt-get install -y sshpass
 
               DUMP_NAME=hybridflow_$(date +%Y%m%d_%H%M%S)
               BACKUP_DIR=/var/backups/hybridflow/$DUMP_NAME
@@ -242,12 +254,14 @@ jobs:
               sshpass -p "UTNGRUPO02**" ssh -o StrictHostKeyChecking=no Administrador@137.0.30.3 "
                 cd 'C:/app/oracle/product/19c/dbhome_1/BIN'
                 ./expdp.exe GRUPO02/\\\"Grupo02*\\\" DIRECTORY=DATA_PUMP_DIR \
-                    DUMPFILE=$DUMP_NAME.dmp LOGFILE=$DUMP_NAME.log \
-                    SCHEMAS=GRUPO02 COMPRESSION=ALL
+                DUMPFILE=$DUMP_NAME.dmp LOGFILE=$DUMP_NAME.log \
+                SCHEMAS=GRUPO02 COMPRESSION=ALL
               "
 
-              sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no Administrador@137.0.30.3:"C:/app/oracle/admin/orcl/dpdump/$DUMP_NAME.dmp" "$BACKUP_DIR/"
-              sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no Administrador@137.0.30.3:"C:/app/oracle/admin/orcl/dpdump/$DUMP_NAME.log" "$BACKUP_DIR/"
+              sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no \
+                Administrador@137.0.30.3:"C:/app/oracle/admin/orcl/dpdump/$DUMP_NAME.dmp" "$BACKUP_DIR/"
+              sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no \
+                Administrador@137.0.30.3:"C:/app/oracle/admin/orcl/dpdump/$DUMP_NAME.log" "$BACKUP_DIR/"
 
               echo "✔ Backup Oracle guardado en: $BACKUP_DIR"
 
@@ -281,27 +295,17 @@ jobs:
               fi
 
 
-              # ========= INSTALAR ORACLE CLIENT ==========
-              echo "📦 Instalando Oracle InstantClient..."
+              # ==================================
+              # OCI8 SOLO SE INSTALA SI FALTA
+              # ==================================
+              echo "📦 Verificando Oracle Instant Client..."
 
-              if [ ! -d /opt/oracle/instantclient ]; then
-                sudo mkdir -p /opt/oracle
-                sudo unzip /opt/oracle/instantclient-basic-linux.x64-21.9.0.0.0dbru.zip -d /opt/oracle/
-                sudo mv /opt/oracle/instantclient_21_9 /opt/oracle/instantclient
-                echo "/opt/oracle/instantclient" | sudo tee /etc/ld.so.conf.d/oracle-instantclient.conf
-                sudo ldconfig
+              if ! php -m | grep -q oci8; then
+                echo "🔧 Instalando OCI8 (solo si faltaba)..."
+                sudo phpenmod oci8 || true
+                sudo phpenmod pdo_oci || true
+                sudo systemctl restart apache2
               fi
-
-              sudo ln -sf /opt/oracle/instantclient/libclntsh.so /usr/lib/libclntsh.so
-              sudo ln -sf /opt/oracle/instantclient/libocci.so /usr/lib/libocci.so
-              sudo ln -sf /opt/oracle/instantclient/libclntshcore.so /usr/lib/libclntshcore.so
-
-              echo "extension=oci8.so" | sudo tee /etc/php/8.1/mods-available/oci8.ini
-              echo "extension=pdo_oci.so" | sudo tee /etc/php/8.1/mods-available/pdo_oci.ini
-
-              sudo phpenmod oci8
-              sudo phpenmod pdo_oci
-              sudo systemctl restart apache2
 
               echo "🔍 Verificando OCI cargado..."
               php -m | grep -E "oci8|pdo_oci" || { echo '❌ OCI NO cargó'; exit 1; }
