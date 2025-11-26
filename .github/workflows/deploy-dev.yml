@@ -213,7 +213,7 @@ jobs:
     steps:
       - name: Deploy a PRODUCCIÓN (via túnel SSH reverse)
         env:
-          RUN_MIGRATIONS: yes
+          RUN_MIGRATIONS: ${{ needs.wait-for-prod.outputs.run_migrations }}
 
         run: |
           echo "⚡ Ejecutando deploy en PRODUCCIÓN vía túnel SSH..."
@@ -221,7 +221,7 @@ jobs:
           ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 << 'OUTER'
             echo "➡ Entrando a Proxmox. Saltando a VMware por el túnel :43000"
 
-            ssh -p 43000 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@localhost << 'INNER'
+            ssh -p 43000 -o StrictHostKeyChecking=no ubuntu@localhost << "INNER"'
               set -e
               echo "🚀 DEPLOY INICIADO EN VMWARE PRODUCCIÓN"
 
@@ -319,11 +319,16 @@ jobs:
                 && echo '✔ Oracle OK CLI' \
                 || { echo '❌ Conexión Oracle FAIL'; exit 1; }
 
-              echo "🛠 Ejecutando migraciones (FORZADO)..."
-              php artisan migrate --force || {
-                echo '❌ ERROR: Las migraciones fallaron';
+              if [ "$RUN_MIGRATIONS" = "yes" ]; then
+              echo "🛠 Ejecutando migraciones..."
+                php artisan migrate --force || {
+                echo "❌ ERROR: Migraciones fallaron";
                 exit 1;
               }
+              else
+              echo "⚠ Migraciones NO ejecutadas (opción seleccionada por el usuario)"
+             fi
+
 
               echo "✔ Migraciones aplicadas correctamente"
               echo "✔ DEPLOY PRODUCCIÓN COMPLETADO"
@@ -348,8 +353,6 @@ jobs:
               fi
             "
           CHECK
-
-
 
   notify-discord:
     name: Notificar a Discord
@@ -385,5 +388,7 @@ jobs:
           curl -H "Content-Type: application/json" \
               -d "$PAYLOAD" \
               ${{ secrets.DISCORD_WEBHOOK }}   
+
+              
 
               
