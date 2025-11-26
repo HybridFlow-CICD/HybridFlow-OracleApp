@@ -199,11 +199,11 @@ jobs:
 
       - name: Esperando...
         run: sleep ${{ steps.calc.outputs.wait_seconds }} 
-
-  # ======================================================
+        
+  # =====================================================
   # DEPLOY PRODUCCIÓN (VMWARE via TÚNEL SSH)
   # ======================================================
-  
+
   deploy-prod:
     name: Deploy to Production (VMware via SSH Tunnel)
     needs: wait-for-prod
@@ -233,10 +233,8 @@ jobs:
 
               git remote remove origin 2>/dev/null || true
               git remote add origin "https://github.com/HybridFlow-CICD/HybridFlow-OracleApp.git"
-
               git fetch origin main
               git reset --hard origin/main
-
               echo "✔ Código actualizado desde MAIN correctamente"
 
               # ==================================
@@ -261,7 +259,6 @@ jobs:
 
               sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no \
                 Administrador@137.0.30.3:"C:/app/oracle/admin/orcl/dpdump/$DUMP_NAME.dmp" "$BACKUP_DIR/"
-
               sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no \
                 Administrador@137.0.30.3:"C:/app/oracle/admin/orcl/dpdump/$DUMP_NAME.log" "$BACKUP_DIR/"
 
@@ -277,7 +274,6 @@ jobs:
               sudo rm -rf /var/www/html/frontend-app
               sudo mkdir -p /var/www/html/frontend-app
               sudo cp -r build/* /var/www/html/frontend-app/
-
               echo "✔ Frontend desplegado en PRODUCCIÓN"
 
               # ==================================
@@ -305,6 +301,7 @@ jobs:
               echo "🔍 Verificando OCI cargado..."
               php -m | grep -E "oci8|pdo_oci" || { echo '❌ OCI NO cargó'; exit 1; }
 
+              # ========= CACHE Y TEST DB ==========
               php artisan config:clear
               php artisan cache:clear
               php artisan optimize:clear
@@ -315,11 +312,11 @@ jobs:
                 && echo '✔ Oracle OK CLI' \
                 || { echo '❌ Conexión Oracle FAIL'; exit 1; }
 
+              # ========= MIGRACIONES ==========
               if [ "$RUN_MIGRATIONS" = "yes" ]; then
                 echo "🛠 Ejecutando migraciones..."
                 php artisan migrate --force || {
-                  echo "❌ ERROR: Migraciones fallaron";
-                  exit 1;
+                  echo "❌ ERROR: Migraciones fallaron"; exit 1;
                 }
               else
                 echo "⚠ Migraciones NO ejecutadas (opción seleccionada por el usuario)"
@@ -329,6 +326,21 @@ jobs:
               echo "✔ DEPLOY PRODUCCIÓN COMPLETADO"
             INNER
           OUTER
+
+          - name: Health Check Oracle (Proxmox → VMware vía túnel) run: | 
+          echo "🔍 Ejecutando Health Check Oracle vía túnel..." 
+          ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 <<
+          'CHECK' ssh -p 43000 -o StrictHostKeyChecking=no ubuntu@localhost " 
+          RESP=\$(curl -s http://127.0.0.1/oracle-test) echo \"Respuesta del endpoint: \$RESP\" 
+          
+          if echo \"\$RESP\" | grep -q \"Conectado a Oracle correctamente\"; then 
+          echo \"✔ Oracle OK en PRODUCCIÓN (WEB)\" 
+          else 
+          echo \"❌ Oracle NO responde en PRODUCCIÓN (WEB)\"
+          exit 1 fi " 
+          CHECK
+          
+
 
   notify-discord:
     name: Notificar a Discord
