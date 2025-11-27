@@ -197,7 +197,9 @@ jobs:
       - name: Esperando...
         run: sleep ${{ steps.calc.outputs.wait_seconds }}
 
-  # ======================================================
+ 
+
+   # ======================================================
   # Deploy Producción (VMware via SSH Tunnel)
   # ======================================================
 
@@ -208,6 +210,18 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
 
     steps:
+
+      # ======================================================
+      # 0) Instalar sshpass (necesario para expdp y scp en Windows)
+      # ======================================================
+      - name: Install sshpass
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y sshpass
+
+      # ======================================================
+      # 1) DEPLOY A VMWARE (código, frontend, backend, migraciones, Oracle test)
+      # ======================================================
       - name: Deploy PRODUCCIÓN
         env:
           RUN_MIGRATIONS: ${{ needs.wait-for-prod.outputs.run_migrations }}
@@ -215,14 +229,14 @@ jobs:
         run: |
           echo "⚡ Iniciando deploy producción..."
 
-          # ======================================================
-          # 1) ENTRAR A PROXMOX → VMWARE SIN COMILLAS ROTAS
-          # ======================================================
+          # ==============================
+          # SSH: PROXMOX → VMWARE
+          # ==============================
           ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 << 'PROXMOX'
           ssh -p 43000 -o StrictHostKeyChecking=no ubuntu@localhost << 'VMWARE'
           set -e
 
-          echo "🚀 DEPLOY INICIADO EN VMWARE PRODUCCIÓN"
+          echo "🚀 DEPLOY EN VMWARE INICIADO"
 
           # ======================================================
           # ACTUALIZAR CÓDIGO
@@ -242,7 +256,6 @@ jobs:
           sudo rm -rf /var/www/html/frontend-app
           sudo mkdir -p /var/www/html/frontend-app
           sudo cp -r build/* /var/www/html/frontend-app/
-
           echo "✔ Frontend desplegado correctamente"
 
           # ======================================================
@@ -262,7 +275,7 @@ jobs:
           echo "🔌 Probando conexión Oracle..."
           php artisan tinker --execute="DB::connection()->getPdo();" \
             && echo "✔ Oracle OK" \
-            || { echo "❌ Conexión Oracle FAIL"; exit 1; }
+            || { echo "❌ Oracle FAIL"; exit 1; }
 
           # ======================================================
           # MIGRACIONES CONTROLADAS POR EL USUARIO
@@ -289,6 +302,7 @@ jobs:
 
           sudo mkdir -p "$BACKUP_DIR"
 
+          # Ejecutar expdp en Windows Server
           sshpass -p "UTNGRUPO02**" ssh -o StrictHostKeyChecking=no Administrador@137.0.30.3 \
           "cd C:/Oracle19c/bin && \
           expdp.exe \"GRUPO02/Grupo02*\" DIRECTORY=DATA_PUMP_DIR \
@@ -296,6 +310,7 @@ jobs:
           LOGFILE=${DUMP_NAME}.log \
           SCHEMAS=GRUPO02 COMPRESSION=ALL"
 
+          # Copiar dump desde Windows → Linux
           sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no \
             Administrador@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/${DUMP_NAME}.dmp\" "$BACKUP_DIR/"
 
@@ -304,8 +319,9 @@ jobs:
 
           echo "✔ Backup Oracle guardado en $BACKUP_DIR"
 
+
       # ======================================================
-      # HEALTH CHECK
+      # 3) HEALTH CHECK FINAL
       # ======================================================
       - name: Health Check Oracle (Proxmox → VMware vía túnel)
         run: |
@@ -316,7 +332,7 @@ jobs:
           echo \"\$RESP\" | grep -q \"Conectado a Oracle correctamente\" || exit 1
           "
           CHECK
-
+          
   notify-discord:
     name: Notificar a Discord
     needs: [deploy-prod]
