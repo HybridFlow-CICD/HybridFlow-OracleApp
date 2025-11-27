@@ -199,7 +199,7 @@ jobs:
 
  
 
-   # ======================================================
+    # ======================================================
   # Deploy Producción (VMware via SSH Tunnel)
   # ======================================================
 
@@ -219,12 +219,11 @@ jobs:
           echo "⚙ Aplicando fix anti-freeze..."
 
           sudo killall -9 apt-get apt dpkg man || true
-
           sudo rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend /var/cache/apt/archives/lock
 
-          echo "path-exclude=/usr/share/man/*"    | sudo tee /etc/dpkg/dpkg.cfg.d/01_nodoc
-          echo "path-exclude=/usr/share/doc/*"    | sudo tee -a /etc/dpkg/dpkg.cfg.d/01_nodoc
-          echo "path-exclude=/usr/share/doc-base/*" | sudo tee -a /etc/dpkg/dpkg.cfg.d/01_nodoc
+          echo "path-exclude=/usr/share/man/*"          | sudo tee /etc/dpkg/dpkg.cfg.d/01_nodoc
+          echo "path-exclude=/usr/share/doc/*"          | sudo tee -a /etc/dpkg/dpkg.cfg.d/01_nodoc
+          echo "path-exclude=/usr/share/doc-base/*"     | sudo tee -a /etc/dpkg/dpkg.cfg.d/01_nodoc
 
           sudo dpkg --configure -a || true
           echo "✔ Fix apt completado"
@@ -276,6 +275,7 @@ jobs:
           cd frontend
           npm install --legacy-peer-deps
           npm run build
+
           sudo rm -rf /var/www/html/frontend-app
           sudo mkdir -p /var/www/html/frontend-app
           sudo cp -r build/* /var/www/html/frontend-app/
@@ -283,6 +283,7 @@ jobs:
 
           # BACKEND
           cd ../backend
+
           sudo chown -R ubuntu:www-data storage bootstrap/cache
           sudo chmod -R 775 storage bootstrap/cache
 
@@ -308,7 +309,6 @@ jobs:
 
           VMWARE
           PROXMOX
-
 
       # ======================================================
       # 3) BACKUP ORACLE (FUERA DEL TÚNEL)
@@ -348,6 +348,7 @@ jobs:
             echo \"\$RESP\" | grep -q \"Conectado a Oracle correctamente\" || exit 1
           "
           CHECK
+
 
 
   # ======================================================
