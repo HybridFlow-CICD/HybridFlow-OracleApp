@@ -29,7 +29,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-
   # ======================================================
   # BUILD & TEST
   # ======================================================
@@ -50,8 +49,8 @@ jobs:
       - name: Configurar Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18.x'
-          cache: 'npm'
+          node-version: "18.x"
+          cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
       - name: Instalar dependencias frontend
@@ -153,7 +152,6 @@ jobs:
             php artisan migrate --force
           "
 
-
   # ======================================================
   # ESPERAR HASTA LA HORA PROGRAMADA
   # ======================================================
@@ -167,7 +165,6 @@ jobs:
       run_migrations: ${{ github.event.inputs.run_migrations }}
 
     steps:
-
       - name: Convertir hora CR → UTC
         id: convert
         run: |
@@ -198,11 +195,11 @@ jobs:
           echo "wait_seconds=$WAIT" >> $GITHUB_OUTPUT
 
       - name: Esperando...
-        run: sleep ${{ steps.calc.outputs.wait_seconds }} 
+        run: sleep ${{ steps.calc.outputs.wait_seconds }}
 
   # ======================================================
-# Deploy Producción (VMware via SSH Tunnel)
-# ======================================================
+  # Deploy Producción (VMware via SSH Tunnel)
+  # ======================================================
 
   deploy-prod:
     name: Deploy to Production (VMware via SSH Tunnel)
@@ -219,7 +216,7 @@ jobs:
           echo "⚡ Ejecutando deploy en PRODUCCIÓN vía túnel SSH..."
 
           ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 << 'OUTER'
-            echo "➡ Entrando a Proxmox. Saltando a VMware por el túnel :43000"
+          echo "➡ Entrando a Proxmox. Saltando a VMware por el túnel :43000"
 
             ssh -p 43000 -o StrictHostKeyChecking=no ubuntu@localhost << 'INNER'
               set -e
@@ -251,13 +248,13 @@ jobs:
               sudo mkdir -p "$BACKUP_DIR"
               sudo chown ubuntu:ubuntu "$BACKUP_DIR"
 
-              echo "📦 Ejecutando EXPDP en Windows Server..."
-              sshpass -p "UTNGRUPO02**" ssh -o StrictHostKeyChecking=no Administrador@137.0.30.3 "
-                cd 'C:/app/oracle/product/19c/dbhome_1/BIN'
-                ./expdp.exe GRUPO02/\\\"Grupo02*\\\" DIRECTORY=DATA_PUMP_DIR \
-                  DUMPFILE=$DUMP_NAME.dmp LOGFILE=$DUMP_NAME.log \
-                  SCHEMAS=GRUPO02 COMPRESSION=ALL
-              "
+          echo "📦 Ejecutando EXPDP en Windows Server..."
+
+          sshpass -p "UTNGRUPO02**" ssh -o StrictHostKeyChecking=no Administrador@137.0.30.3 << 'EXPDP'
+          cd "C:/app/oracle/product/19c/dbhome_1/BIN"
+          ./expdp.exe GRUPO02/"Grupo02*" DIRECTORY=DATA_PUMP_DIR DUMPFILE=%DUMP_NAME%.dmp LOGFILE=%DUMP_NAME%.log SCHEMAS=GRUPO02 COMPRESSION=ALL
+          EXPDP
+
 
               sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no \
                 Administrador@137.0.30.3:"C:/app/oracle/admin/orcl/dpdump/$DUMP_NAME.dmp" "$BACKUP_DIR/"
@@ -308,27 +305,27 @@ jobs:
               php artisan config:clear
               php artisan cache:clear
               php artisan optimize:clear
-              php artisan config:cache
+            php artisan config:cache
 
-              echo "🔌 Probando conexión Oracle..."
-              php artisan tinker --execute="DB::connection()->getPdo();" \
-                && echo '✔ Oracle OK CLI' \
-                || { echo '❌ Conexión Oracle FAIL'; exit 1; }
+            echo "🔌 Probando conexión Oracle..."
+            php artisan tinker --execute="DB::connection()->getPdo();" \
+            && echo '✔ Oracle OK CLI' \
+            || { echo '❌ Conexión Oracle FAIL'; exit 1; }
 
               # MIGRACIONES SEGÚN INPUT
-              if [ "$RUN_MIGRATIONS" = "yes" ]; then
-                echo "🛠 Ejecutando migraciones..."
-                php artisan migrate --force || {
-                  echo "❌ ERROR: Migraciones fallaron";
-                  exit 1;
-                }
-              else
-                echo "⚠ Migraciones NO ejecutadas por selección del usuario"
-              fi
+            if [ "$RUN_MIGRATIONS" = "yes" ]; then
+            echo "🛠 Ejecutando migraciones..."
+            php artisan migrate --force || {
+            echo "❌ ERROR: Migraciones fallaron";
+            exit 1;
+            }
+            else
+            echo "⚠ Migraciones NO ejecutadas por selección del usuario"
+            fi
 
-              echo "✔ DEPLOY PRODUCCIÓN COMPLETADO"
+            echo "✔ DEPLOY PRODUCCIÓN COMPLETADO"
             INNER
-          OUTER
+            OUTER
 
       # ========= HEALTH CHECK =========
       - name: Health Check Oracle (Proxmox → VMware vía túnel)
@@ -336,21 +333,18 @@ jobs:
           echo "🔍 Ejecutando Health Check Oracle vía túnel..."
 
           ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 << 'CHECK'
-            ssh -p 43000 -o StrictHostKeyChecking=no ubuntu@localhost "
-              RESP=\$(curl -s http://127.0.0.1/oracle-test)
-              echo \"Respuesta del endpoint: \$RESP\"
+          ssh -p 43000 -o StrictHostKeyChecking=no ubuntu@localhost "
+          RESP=\$(curl -s http://127.0.0.1/oracle-test)
+          echo \"Respuesta del endpoint: \$RESP\"
 
-              if echo \"\$RESP\" | grep -q \"Conectado a Oracle correctamente\"; then
-                echo \"✔ Oracle OK en PRODUCCIÓN (WEB)\"
-              else
-                echo \"❌ Oracle NO responde en PRODUCCIÓN (WEB)\"
-                exit 1
-              fi
-            "
+          if echo \"\$RESP\" | grep -q \"Conectado a Oracle correctamente\"; then
+          echo \"✔ Oracle OK en PRODUCCIÓN (WEB)\"
+          else
+          echo \"❌ Oracle NO responde en PRODUCCIÓN (WEB)\"
+          exit 1
+          fi
+          "
           CHECK
-
-          
-
 
   notify-discord:
     name: Notificar a Discord
@@ -389,4 +383,4 @@ jobs:
 
               
 
-              
+
