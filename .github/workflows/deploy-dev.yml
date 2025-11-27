@@ -237,7 +237,7 @@ jobs:
               echo "✔ Código actualizado desde MAIN correctamente"
 
               # ==================================
-              # BACKUP ORACLE
+              # BACKUP ORACLE (CORREGIDO)
               # ==================================
               sudo apt-get update -y
               sudo apt-get install -y sshpass unzip
@@ -250,13 +250,17 @@ jobs:
 
               echo "📦 Ejecutando EXPDP en Windows Server..."
 
-              # Ejecutar expdp en Windows SIN HERE-DOC (Windows no interpreta bien variables en << 'EOF')
+              # Ejecutar expdp en Windows en la ruta REAL: C:\Oracle19c\bin
               sshpass -p "UTNGRUPO02**" ssh -o StrictHostKeyChecking=no Administrador@137.0.30.3 \
-              "cd C:/app/oracle/product/19c/dbhome_1/BIN && \
-              expdp.exe GRUPO02/\"Grupo02*\" DIRECTORY=DATA_PUMP_DIR \
-              DUMPFILE=${DUMP_NAME}.dmp LOGFILE=${DUMP_NAME}.log \
-              SCHEMAS=GRUPO02 COMPRESSION=ALL"
+              "cd C:/Oracle19c/bin && \
+              expdp.exe GRUPO02/\"Grupo02*\" \
+              DIRECTORY=DATA_PUMP_DIR \
+              DUMPFILE=${DUMP_NAME}.dmp \
+              LOGFILE=${DUMP_NAME}.log \
+              SCHEMAS=GRUPO02 \
+              COMPRESSION=ALL"
 
+              echo "📥 Copiando dump desde Windows a Linux..."
 
               sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no \
                 Administrador@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/${DUMP_NAME}.dmp\" "$BACKUP_DIR/"
@@ -265,6 +269,7 @@ jobs:
                 Administrador@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/${DUMP_NAME}.log\" "$BACKUP_DIR/"
 
               echo "✔ Backup Oracle guardado en $BACKUP_DIR"
+
 
               # ==================================
               # FRONTEND
@@ -385,6 +390,5 @@ jobs:
               ${{ secrets.DISCORD_WEBHOOK }}   
 
               
-
 
 
