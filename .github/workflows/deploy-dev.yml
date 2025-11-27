@@ -215,6 +215,9 @@ jobs:
         run: |
           echo "⚡ Ejecutando deploy en PRODUCCIÓN vía túnel SSH..."
 
+          # ======================================================
+          # ENTRAR A PROXMOX Y DE AHÍ A VMWARE
+          # ======================================================
           ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 << 'OUTER'
           echo "➡ Entrando a Proxmox. Saltando a VMware por el túnel :43000"
 
@@ -235,43 +238,6 @@ jobs:
               git reset --hard origin/main
 
               echo "✔ Código actualizado desde MAIN correctamente"
-
-             # ==================================
-              # BACKUP ORACLE (FINAL - FUNCIONAL)
-              # ==================================
-              sudo apt-get update -y
-              sudo apt-get install -y sshpass unzip
-
-              DUMP_NAME=hybridflow_$(date +%Y%m%d_%H%M%S)
-              BACKUP_DIR=/var/backups/hybridflow/$DUMP_NAME
-
-              sudo mkdir -p "$BACKUP_DIR"
-              sudo chown ubuntu:ubuntu "$BACKUP_DIR"
-
-              echo "📦 Ejecutando EXPDP en Windows Server..."
-
-              sshpass -p "UTNGRUPO02**" ssh -o StrictHostKeyChecking=no Administrador@137.0.30.3 \
-              "cd C:/Oracle19c/bin && \
-              expdp.exe 'GRUPO02/Grupo02*' \
-              DIRECTORY=DATA_PUMP_DIR \
-              DUMPFILE=${DUMP_NAME}.dmp \
-              LOGFILE=${DUMP_NAME}.log \
-              SCHEMAS=GRUPO02 \
-              COMPRESSION=ALL"
-
-              
-
-              echo "📥 Copiando dump desde Windows a Linux..."
-
-              sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no \
-                Administrador@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/${DUMP_NAME}.dmp\" "$BACKUP_DIR/"
-
-              sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no \
-                Administrador@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/${DUMP_NAME}.log\" "$BACKUP_DIR/"
-
-              echo "✔ Backup Oracle guardado en $BACKUP_DIR"
-
-
 
               # ==================================
               # FRONTEND
@@ -300,7 +266,6 @@ jobs:
                 composer require yajra/laravel-oci8:"^9.5" --no-interaction
               fi
 
-              # OCI8 SOLO SI FALTA
               echo "🔍 Verificando Oracle Instant Client..."
               if ! php -m | grep -q oci8; then
                 echo "🔧 Instalando OCI8..."
@@ -309,33 +274,66 @@ jobs:
                 sudo systemctl restart apache2
               fi
 
-              echo "🔍 Verificando OCI cargado..."
               php -m | grep -E "oci8|pdo_oci" || { echo '❌ OCI NO cargó'; exit 1; }
 
               php artisan config:clear
               php artisan cache:clear
               php artisan optimize:clear
-            php artisan config:cache
+              php artisan config:cache
 
-            echo "🔌 Probando conexión Oracle..."
-            php artisan tinker --execute="DB::connection()->getPdo();" \
-            && echo '✔ Oracle OK CLI' \
-            || { echo '❌ Conexión Oracle FAIL'; exit 1; }
+              echo "🔌 Probando conexión Oracle..."
+              php artisan tinker --execute="DB::connection()->getPdo();" \
+              && echo '✔ Oracle OK CLI' \
+              || { echo '❌ Conexión Oracle FAIL'; exit 1; }
 
               # MIGRACIONES SEGÚN INPUT
-            if [ "$RUN_MIGRATIONS" = "yes" ]; then
-            echo "🛠 Ejecutando migraciones..."
-            php artisan migrate --force || {
-            echo "❌ ERROR: Migraciones fallaron";
-            exit 1;
-            }
-            else
-            echo "⚠ Migraciones NO ejecutadas por selección del usuario"
-            fi
+              if [ "$RUN_MIGRATIONS" = "yes" ]; then
+                echo "🛠 Ejecutando migraciones..."
+                php artisan migrate --force || {
+                  echo "❌ ERROR: Migraciones fallaron";
+                  exit 1;
+                }
+              else
+                echo "⚠ Migraciones NO ejecutadas por selección del usuario"
+              fi
 
-            echo "✔ DEPLOY PRODUCCIÓN COMPLETADO"
+              echo "✔ DEPLOY EN VMWARE COMPLETADO"
             INNER
-            OUTER
+          OUTER
+
+
+          # ======================================================
+          # BACKUP ORACLE (FUERA DEL HERE-DOC)
+          # ======================================================
+          echo "📦 Iniciando backup Oracle desde Windows Server..."
+
+          DUMP_NAME=hybridflow_$(date +%Y%m%d_%H%M%S)
+          BACKUP_DIR=/var/backups/hybridflow/$DUMP_NAME
+
+          sudo mkdir -p "$BACKUP_DIR"
+
+          echo "📤 Ejecutando EXPDP en Windows..."
+
+          sshpass -p "UTNGRUPO02**" ssh -o StrictHostKeyChecking=no Administrador@137.0.30.3 \
+          "cd C:/Oracle19c/bin && \
+          expdp.exe \"GRUPO02/Grupo02*\" \
+          DIRECTORY=DATA_PUMP_DIR \
+          DUMPFILE=${DUMP_NAME}.dmp \
+          LOGFILE=${DUMP_NAME}.log \
+          SCHEMAS=GRUPO02 \
+          COMPRESSION=ALL"
+
+          echo "📥 Copiando dump a Linux..."
+
+          sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no \
+          Administrador@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/${DUMP_NAME}.dmp\" "$BACKUP_DIR/"
+
+          sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no \
+          Administrador@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/${DUMP_NAME}.log\" "$BACKUP_DIR/"
+
+          echo "✔ Backup Oracle guardado en $BACKUP_DIR"
+
+
 
       # ========= HEALTH CHECK =========
       - name: Health Check Oracle (Proxmox → VMware vía túnel)
@@ -348,13 +346,15 @@ jobs:
           echo \"Respuesta del endpoint: \$RESP\"
 
           if echo \"\$RESP\" | grep -q \"Conectado a Oracle correctamente\"; then
-          echo \"✔ Oracle OK en PRODUCCIÓN (WEB)\"
+            echo \"✔ Oracle OK en PRODUCCIÓN (WEB)\"
           else
-          echo \"❌ Oracle NO responde en PRODUCCIÓN (WEB)\"
-          exit 1
+            echo \"❌ Oracle NO responde en PRODUCCIÓN (WEB)\"
+            exit 1
           fi
           "
           CHECK
+
+
 
   notify-discord:
     name: Notificar a Discord
