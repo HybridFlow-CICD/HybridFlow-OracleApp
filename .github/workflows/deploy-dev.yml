@@ -250,15 +250,16 @@ jobs:
 
               echo "📦 Ejecutando EXPDP en Windows Server..."
 
-              # Ejecutar expdp en la ruta REAL donde está Oracle
               sshpass -p "UTNGRUPO02**" ssh -o StrictHostKeyChecking=no Administrador@137.0.30.3 \
               "cd C:/Oracle19c/bin && \
-              expdp.exe \"GRUPO02/Grupo02*\" \
+              expdp.exe 'GRUPO02/Grupo02*' \
               DIRECTORY=DATA_PUMP_DIR \
               DUMPFILE=${DUMP_NAME}.dmp \
               LOGFILE=${DUMP_NAME}.log \
               SCHEMAS=GRUPO02 \
               COMPRESSION=ALL"
+
+              
 
               echo "📥 Copiando dump desde Windows a Linux..."
 
