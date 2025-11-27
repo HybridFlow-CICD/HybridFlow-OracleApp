@@ -8,15 +8,15 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('estudiantes', function (Blueprint $table) {
-            $table->id();
-            $table->string('nombre', 100);
+        Schema::create('empleados', function (Blueprint $table) {
+            $table->id(); // id autoincrement primary key
+            $table->string('nombre'); // nombre del empleado
             $table->timestamps();
         });
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('estudiantes');
+        Schema::dropIfExists('empleados');
     }
 };
