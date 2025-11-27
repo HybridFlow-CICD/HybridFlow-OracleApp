@@ -212,40 +212,58 @@ jobs:
     steps:
 
       # ======================================================
-      # 0) FIX GLOBAL: evitar freezes de apt/man-db
+      # 0) Fix global para evitar freezes de apt, dpkg y man-db
       # ======================================================
       - name: Hard fix apt freeze
         run: |
-          echo "⚙ Aplicando fix anti-freeze en apt/dpkg..."
-          sudo systemctl stop man-db.service || true
-          sudo systemctl stop man-db.timer || true
-          sudo killall -9 man || true
-          sudo rm -f /var/lib/man-db/auto-update
+          echo "⚙ Aplicando fix anti-freeze..."
 
-          # Bloquear manuales y documentación (evita triggers largos)
+          # Matar procesos colgados
+          sudo killall -9 apt-get || true
+          sudo killall -9 apt || true
+          sudo killall -9 dpkg || true
+          sudo killall -9 man || true
+
+          # Eliminar locks
+          sudo rm -f /var/lib/dpkg/lock
+          sudo rm -f /var/lib/dpkg/lock-frontend
+          sudo rm -f /var/cache/apt/archives/lock
+
+          # Bloquear documentación (evita triggers de man-db que duran minutos)
           echo "path-exclude=/usr/share/man/*" | sudo tee /etc/dpkg/dpkg.cfg.d/01_nodoc
           echo "path-exclude=/usr/share/doc/*" | sudo tee -a /etc/dpkg/dpkg.cfg.d/01_nodoc
           echo "path-exclude=/usr/share/doc-base/*" | sudo tee -a /etc/dpkg/dpkg.cfg.d/01_nodoc
 
-          # Limpiar locks corruptos
-          sudo rm -f /var/lib/dpkg/lock
-          sudo rm -f /var/lib/apt/lists/lock
-
           sudo dpkg --configure -a || true
+
           echo "✔ Fix apt completado"
 
       # ======================================================
-      # 1) Instalar sshpass (YA NO SE PEGA)
+      # 1) Instalar sshpass (sin congelamientos ni locks)
       # ======================================================
       - name: Install sshpass
         run: |
           echo "📦 Instalando sshpass..."
-          sudo apt-get update -o Acquire::Retries=3 -y
+
+          # Asegurar que nada esté bloqueando apt
+          sudo killall -9 apt-get || true
+          sudo killall -9 apt || true
+          sudo killall -9 dpkg || true
+
+          sudo rm -f /var/lib/dpkg/lock
+          sudo rm -f /var/lib/dpkg/lock-frontend
+          sudo rm -f /var/cache/apt/archives/lock
+
+          sudo dpkg --configure -a || true
+
+          sudo apt-get update -y
           sudo apt-get install -y sshpass --no-install-recommends
-          echo "✔ sshpass instalado"
+
+          echo "✔ sshpass instalado correctamente"
+
 
       # ======================================================
-      # 2) DEPLOY A VMWARE (código, frontend, backend, migraciones, Oracle test)
+      # 2) DEPLOY EN VMWARE
       # ======================================================
       - name: Deploy PRODUCCIÓN
         env:
@@ -319,7 +337,7 @@ jobs:
           PROXMOX
 
           # ======================================================
-          # 3) BACKUP ORACLE
+          # 3) BACKUP ORACLE (fuera del túnel)
           # ======================================================
           echo "📦 Ejecutando backup Oracle..."
 
@@ -357,6 +375,7 @@ jobs:
           echo \"\$RESP\" | grep -q \"Conectado a Oracle correctamente\" || exit 1
           "
           CHECK
+
 
 
 
