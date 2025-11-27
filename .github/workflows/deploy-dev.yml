@@ -236,8 +236,8 @@ jobs:
 
               echo "✔ Código actualizado desde MAIN correctamente"
 
-              # ==================================
-              # BACKUP ORACLE (CORREGIDO)
+             # ==================================
+              # BACKUP ORACLE (FINAL - FUNCIONAL)
               # ==================================
               sudo apt-get update -y
               sudo apt-get install -y sshpass unzip
@@ -250,10 +250,10 @@ jobs:
 
               echo "📦 Ejecutando EXPDP en Windows Server..."
 
-              # Ejecutar expdp en Windows en la ruta REAL: C:\Oracle19c\bin
+              # Ejecutar expdp en la ruta REAL donde está Oracle
               sshpass -p "UTNGRUPO02**" ssh -o StrictHostKeyChecking=no Administrador@137.0.30.3 \
               "cd C:/Oracle19c/bin && \
-              expdp.exe GRUPO02/\"Grupo02*\" \
+              expdp.exe \"GRUPO02/Grupo02*\" \
               DIRECTORY=DATA_PUMP_DIR \
               DUMPFILE=${DUMP_NAME}.dmp \
               LOGFILE=${DUMP_NAME}.log \
@@ -269,6 +269,7 @@ jobs:
                 Administrador@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/${DUMP_NAME}.log\" "$BACKUP_DIR/"
 
               echo "✔ Backup Oracle guardado en $BACKUP_DIR"
+
 
 
               # ==================================
