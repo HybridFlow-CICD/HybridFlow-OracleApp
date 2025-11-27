@@ -248,18 +248,21 @@ jobs:
               sudo mkdir -p "$BACKUP_DIR"
               sudo chown ubuntu:ubuntu "$BACKUP_DIR"
 
-          echo "📦 Ejecutando EXPDP en Windows Server..."
+              echo "📦 Ejecutando EXPDP en Windows Server..."
 
-          sshpass -p "UTNGRUPO02**" ssh -o StrictHostKeyChecking=no Administrador@137.0.30.3 << 'EXPDP'
-          cd "C:/app/oracle/product/19c/dbhome_1/BIN"
-          ./expdp.exe GRUPO02/"Grupo02*" DIRECTORY=DATA_PUMP_DIR DUMPFILE=%DUMP_NAME%.dmp LOGFILE=%DUMP_NAME%.log SCHEMAS=GRUPO02 COMPRESSION=ALL
-          EXPDP
+              # Ejecutar expdp en Windows SIN HERE-DOC (Windows no interpreta bien variables en << 'EOF')
+              sshpass -p "UTNGRUPO02**" ssh -o StrictHostKeyChecking=no Administrador@137.0.30.3 \
+              "cd C:/app/oracle/product/19c/dbhome_1/BIN && \
+              expdp.exe GRUPO02/\"Grupo02*\" DIRECTORY=DATA_PUMP_DIR \
+              DUMPFILE=${DUMP_NAME}.dmp LOGFILE=${DUMP_NAME}.log \
+              SCHEMAS=GRUPO02 COMPRESSION=ALL"
 
 
               sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no \
-                Administrador@137.0.30.3:"C:/app/oracle/admin/orcl/dpdump/$DUMP_NAME.dmp" "$BACKUP_DIR/"
+                Administrador@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/${DUMP_NAME}.dmp\" "$BACKUP_DIR/"
+
               sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no \
-                Administrador@137.0.30.3:"C:/app/oracle/admin/orcl/dpdump/$DUMP_NAME.log" "$BACKUP_DIR/"
+                Administrador@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/${DUMP_NAME}.log\" "$BACKUP_DIR/"
 
               echo "✔ Backup Oracle guardado en $BACKUP_DIR"
 
@@ -382,5 +385,6 @@ jobs:
               ${{ secrets.DISCORD_WEBHOOK }}   
 
               
+
 
 
