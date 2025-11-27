@@ -199,7 +199,7 @@ jobs:
 
  
 
-  # ======================================================
+    # ======================================================
   # Deploy Producción (VMware via SSH Tunnel)
   # ======================================================
 
@@ -239,11 +239,11 @@ jobs:
           echo "✔ Fix apt completado"
 
       # ======================================================
-      # 1) Instalar sshpass (sin congelamientos ni locks)
+      # 1) Instalar sshpass (runner) – opcional pero lo dejamos
       # ======================================================
       - name: Install sshpass
         run: |
-          echo "📦 Instalando sshpass..."
+          echo "📦 Instalando sshpass en runner..."
 
           # Asegurar que nada esté bloqueando apt
           sudo killall -9 apt-get || true
@@ -259,16 +259,15 @@ jobs:
           sudo apt-get update -y
           sudo apt-get install -y sshpass --no-install-recommends
 
-          echo "✔ sshpass instalado correctamente"
+          echo "✔ sshpass instalado correctamente en runner"
 
 
       # ======================================================
-      # 2) DEPLOY EN VMWARE
+      # 2) DEPLOY EN VMWARE (incluye ahora el BACKUP ORACLE)
       # ======================================================
       - name: Deploy PRODUCCIÓN
         env:
           RUN_MIGRATIONS: ${{ needs.wait-for-prod.outputs.run_migrations }}
-
         run: |
           echo "⚡ Iniciando deploy producción..."
 
@@ -333,28 +332,29 @@ jobs:
 
           echo "✔ DEPLOY VMWARE COMPLETADO"
 
-          VMWARE
-          PROXMOX
-
           # ======================================================
-          # 3) BACKUP ORACLE (fuera del túnel)
+          # 3) BACKUP ORACLE (DENTRO de VMWARE, usando la red PG-VLAN30)
           # ======================================================
-          echo "📦 Ejecutando backup Oracle..."
+          echo "📦 Ejecutando backup Oracle desde VMWARE..."
 
           DUMP_NAME=hybridflow_$(date +%Y%m%d_%H%M%S)
           BACKUP_DIR=/var/backups/hybridflow/$DUMP_NAME
 
           sudo mkdir -p "$BACKUP_DIR"
 
-          # Ejecutar expdp en Windows Server
-          sshpass -p "UTNGRUPO02**" ssh -o StrictHostKeyChecking=no Administrador@137.0.30.3 \
-          "cd C:/Oracle19c/bin && \
-          expdp.exe \"GRUPO02/Grupo02*\" DIRECTORY=DATA_PUMP_DIR \
-          DUMPFILE=${DUMP_NAME}.dmp \
-          LOGFILE=${DUMP_NAME}.log \
-          SCHEMAS=GRUPO02 COMPRESSION=ALL"
+          # Asegurar sshpass en la Ubuntu de VMware
+          if ! command -v sshpass >/dev/null 2>&1; then
+            sudo apt-get update -y
+            sudo apt-get install -y sshpass --no-install-recommends
+          fi
 
-          # Copiar dump desde Windows → Linux
+          sshpass -p "UTNGRUPO02**" ssh -o StrictHostKeyChecking=no Administrador@137.0.30.3 \
+            "cd C:/Oracle19c/bin && \
+            expdp.exe \"GRUPO02/Grupo02*\" DIRECTORY=DATA_PUMP_DIR \
+            DUMPFILE=${DUMP_NAME}.dmp \
+            LOGFILE=${DUMP_NAME}.log \
+            SCHEMAS=GRUPO02 COMPRESSION=ALL"
+
           sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no \
             Administrador@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/${DUMP_NAME}.dmp\" "$BACKUP_DIR/"
 
@@ -363,8 +363,12 @@ jobs:
 
           echo "✔ Backup Oracle guardado en $BACKUP_DIR"
 
+          VMWARE
+          PROXMOX
+
+
       # ======================================================
-      # 4) HEALTH CHECK FINAL
+      # 3) HEALTH CHECK FINAL
       # ======================================================
       - name: Health Check Oracle (Proxmox → VMware vía túnel)
         run: |
@@ -376,9 +380,9 @@ jobs:
           "
           CHECK
 
-
-
-
+  # ======================================================
+  # 3) Notificación a Discord
+  # ======================================================
   notify-discord:
     name: Notificar a Discord
     needs: [deploy-prod]
