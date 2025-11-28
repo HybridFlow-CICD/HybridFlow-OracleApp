@@ -338,9 +338,9 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 << 'CHECK'
           ssh -p 43000 -o StrictHostKeyChecking=no ubuntu@localhost "
-          RESP=\$(curl -s http://127.0.0.1/oracle-test)
-          echo \"Respuesta del endpoint: \$RESP\"
-          echo \"\$RESP\" | grep -q \"Conectado a Oracle correctamente\" || exit 1
+            RESP=\$(curl -s http://127.0.0.1/oracle-test)
+            echo \"Respuesta del endpoint: \$RESP\"
+            echo \"\$RESP\" | grep -q \"Conectado a Oracle correctamente\" || exit 1
           "
           CHECK
 
