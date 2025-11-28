@@ -357,23 +357,35 @@ jobs:
           PROXMOX
 
       # ======================================================
-      # 4) HEALTH CHECK FINAL (con reintentos)
+      # 4) HEALTH CHECK FINAL (Apache, no CLI)
       # ======================================================
       - name: Health Check Oracle (Proxmox → VMware vía túnel)
         run: |
           ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 << 'CHECK'
-          ssh -p 43000 -o StrictHostKeyChecking=no ubuntu@localhost "
+          ssh -p 43000 -o StrictHostKeyChecking=no ubuntu@localhost << 'VMWARE'
+          
+          echo "⏳ Esperando a que Apache levante (5s)..."
+          sleep 5
+
           for i in {1..5}; do
-            RESP=\$(curl -s http://127.0.0.1/oracle-test)
-            echo \"Intento \$i: \$RESP\"
-            echo \"\$RESP\" | grep -q \"Conectado a Oracle correctamente\" && exit 0
+            RESP=$(curl -s http://localhost/oracle-test || true)
+
+            echo "Intento $i: $RESP"
+
+            echo "$RESP" | grep -q "Conectado a Oracle correctamente" && {
+              echo "✔ Oracle OK vía Apache"
+              exit 0
+            }
+
             sleep 3
           done
 
-          echo \"❌ Oracle no respondió correctamente después de 5 intentos\"
+          echo "❌ Oracle no respondió correctamente después de 5 intentos"
           exit 1
-          "
+
+          VMWARE
           CHECK
+
 
 
 
