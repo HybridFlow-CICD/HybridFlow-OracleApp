@@ -201,10 +201,20 @@ jobs:
   # ======================================================
   # Deploy Producción (VMware via SSH Tunnel)
   # ======================================================
+  set-migration-flag:
+    runs-on: ubuntu-latest
+    outputs:
+      run_migrations: ${{ steps.flag.outputs.run_migrations }}
+    steps:
+      - id: flag
+        run: |
+          echo "run_migrations=${{ github.event.inputs.run_migrations }}" >> $GITHUB_OUTPUT
 
   deploy-prod:
     name: Deploy to Production (VMware via SSH Tunnel)
-    needs: wait-for-prod
+    needs:
+          - wait-for-prod
+          - set-migration-flag
     runs-on: self-hosted
     if: github.event_name == 'workflow_dispatch'
 
@@ -254,7 +264,7 @@ jobs:
       # ======================================================
       - name: Deploy PRODUCCIÓN
         env:
-          RUN_MIGRATIONS: ${{ needs.wait-for-prod.outputs.run_migrations }}
+          RUN_MIGRATIONS: ${{ needs.set-migration-flag.outputs.run_migrations }}
 
         run: |
           echo "⚡ Iniciando deploy producción..."
