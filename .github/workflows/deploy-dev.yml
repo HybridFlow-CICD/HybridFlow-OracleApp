@@ -320,10 +320,12 @@ jobs:
           echo "📦 Instalando Yajra SOLO en producción..."
           COMPOSER_ALLOW_SUPERUSER=1 php -d error_reporting=0 $(which composer) require yajra/laravel-oci8:^9.0 --no-interaction
 
-          echo "🔧 Registrando Service Provider dinámicamente..."
-          if ! grep -q "Yajra\\Oci8\\Oci8ServiceProvider::class" config/app.php; then
-            sed -i "/'providers' => \[/a\        Yajra\\Oci8\\Oci8ServiceProvider::class," config/app.php
+          echo "🛠 Registrando provider de Yajra..."
+
+          if ! grep -q "Yajra\\\\Oci8\\\\Oci8ServiceProvider::class" config/app.php; then
+            sed -i "/'providers' => \[/a\        Yajra\\\\Oci8\\\\Oci8ServiceProvider::class," config/app.php
           fi
+
 
           # ======================================================
           # REBUILD LARAVEL CACHE
