@@ -205,6 +205,7 @@ jobs:
           echo "path-exclude=/usr/share/doc-base/*" | sudo tee -a /etc/dpkg/dpkg.cfg.d/01_nodoc
           sudo dpkg --configure -a || true
           echo "✔ Fix apt completado"
+
       # ======================================================
       # 1) Instalar sshpass en runner
       # ======================================================
@@ -221,12 +222,13 @@ jobs:
           sudo apt-get update -y
           sudo apt-get install -y sshpass --no-install-recommends
           echo "✔ sshpass instalado correctamente"
+
       # ======================================================
       # 2) DEPLOY COMPLETO EN VMWARE
       # ======================================================
       - name: Deploy PRODUCCIÓN
         env:
-          RUN_MIGRATIONS: ${{ github.event.inputs.run_migrations }}
+          RUN_MIGRATIONS: ${{ needs.wait-for-prod.outputs.run_migrations }}
 
         run: |
           echo "⚡ Iniciando deploy producción..."
@@ -234,6 +236,7 @@ jobs:
           ssh -p 43000 -o StrictHostKeyChecking=no ubuntu@localhost << 'VMWARE'
           set -e
           echo "🚀 DEPLOY EN VMWARE INICIADO"
+
           # ======================================================
           # ACTUALIZAR CÓDIGO
           # ======================================================
@@ -241,6 +244,7 @@ jobs:
           git fetch origin main
           git reset --hard origin/main
           echo "✔ Código actualizado desde MAIN"
+
           # ======================================================
           # FRONTEND
           # ======================================================
@@ -251,14 +255,17 @@ jobs:
           sudo mkdir -p /var/www/html/frontend-app
           sudo cp -r build/* /var/www/html/frontend-app/
           echo "✔ Frontend desplegado correctamente"
+
           # ======================================================
           # BACKEND
           # ======================================================
           cd ../backend
           sudo chown -R ubuntu:www-data storage bootstrap/cache
           sudo chmod -R 775 storage bootstrap/cache
+
           echo "🛡 Asegurando PHP 8.1 en Apache..."
           sudo a2enmod php8.1 >/dev/null 2>&1 || true
+
           sudo bash -c 'cat > /etc/apache2/sites-available/000-default.conf' << "EOF"
           <VirtualHost *:80>
               ServerAdmin webmaster@localhost
@@ -271,17 +278,22 @@ jobs:
               CustomLog ${APACHE_LOG_DIR}/backend-access.log combined
           </VirtualHost>
           EOF
+
           sudo systemctl reload apache2
+
           # ======================================================
           # INSTALL DEPENDENCIES SAFELY IN PRODUCTION
           # ======================================================
           COMPOSER_ALLOW_SUPERUSER=1 php -d error_reporting=0 $(which composer) install --no-interaction --prefer-dist --optimize-autoloader
+
           echo "📦 Instalando Yajra SOLO en producción..."
           COMPOSER_ALLOW_SUPERUSER=1 php -d error_reporting=0 $(which composer) require yajra/laravel-oci8:^9.0 --no-interaction
+
           echo "🛠 Registrando provider de Yajra..."
           if ! grep -q "Yajra\\\\Oci8\\\\Oci8ServiceProvider::class" config/app.php; then
             sed -i "/'providers' => \[/a\        Yajra\\\\Oci8\\\\Oci8ServiceProvider::class," config/app.php
           fi
+
           # ======================================================
           # REBUILD LARAVEL CACHE
           # ======================================================
@@ -290,6 +302,7 @@ jobs:
           php artisan route:clear
           php artisan optimize:clear
           php artisan config:cache
+
           echo "🔌 Probando conexión Oracle vía Laravel (CLI)..."
           php artisan tinker --execute="DB::connection()->getPdo();" \
             && echo "✔ Oracle OK (CLI)" \
@@ -304,6 +317,7 @@ jobs:
           else
             echo "⚠ Migraciones NO ejecutadas"
           fi
+
           echo "✔ DEPLOY VMWARE COMPLETADO"
 
           # ======================================================
@@ -313,15 +327,19 @@ jobs:
           DUMP_NAME=hybridflow_$(date +%Y%m%d_%H%M%S)
           BACKUP_DIR=/var/backups/hybridflow/$DUMP_NAME
           sudo mkdir -p "$BACKUP_DIR"
+
           sshpass -p "UTNGRUPO02**" ssh -o StrictHostKeyChecking=no Administrador@137.0.30.3 \
             "cd C:/Oracle19c/bin && \
             expdp.exe GRUPO02/Grupo02*@ORCL DIRECTORY=DATA_PUMP_DIR \
             DUMPFILE=${DUMP_NAME}.dmp LOGFILE=${DUMP_NAME}.log \
             SCHEMAS=GRUPO02 COMPRESSION=ALL"
+
           sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no \
             Administrador@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/${DUMP_NAME}.dmp\" "$BACKUP_DIR/"
+
           sshpass -p "UTNGRUPO02**" scp -o StrictHostKeyChecking=no \
             Administrador@137.0.30.3:\"C:/app/oracle/admin/orcl/dpdump/${DUMP_NAME}.log\" "$BACKUP_DIR/"
+
           echo "✔ Backup Oracle guardado en $BACKUP_DIR"
           VMWARE
           PROXMOX
@@ -348,7 +366,8 @@ jobs:
           exit 1
           VMWARE
           CHECK
-          
+
+
   # ======================================================
   # 3) Notificación a Discord
   # ======================================================
