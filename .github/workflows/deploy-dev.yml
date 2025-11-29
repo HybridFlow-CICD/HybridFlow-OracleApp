@@ -198,7 +198,7 @@ jobs:
         run: sleep ${{ steps.calc.outputs.wait_seconds }}
 
 
-    # ======================================================
+  # ======================================================
   # Deploy Producción (VMware via SSH Tunnel)
   # ======================================================
 
@@ -285,26 +285,6 @@ jobs:
           sudo cp -r build/* /var/www/html/frontend-app/
           echo "✔ Frontend desplegado correctamente"
 
-          # ============ VIRTUALHOST FRONTEND ====================
-          if [ ! -f /etc/apache2/sites-available/frontend.conf ]; then
-            sudo bash -c 'cat > /etc/apache2/sites-available/frontend.conf' << "EOF"
-          <VirtualHost *:80>
-              ServerName frontend.137.0.30.7.nip.io
-              DocumentRoot /var/www/html/frontend-app
-
-              <Directory /var/www/html/frontend-app>
-                  AllowOverride All
-                  Require all granted
-              </Directory>
-
-              ErrorLog ${APACHE_LOG_DIR}/frontend-error.log
-              CustomLog ${APACHE_LOG_DIR}/frontend-access.log combined
-          </VirtualHost>
-          EOF
-            sudo a2ensite frontend.conf
-          fi
-          # ======================================================
-
           # ======================================================
           # BACKEND
           # ======================================================
@@ -332,17 +312,22 @@ jobs:
 
           sudo systemctl reload apache2
 
+          # ======================================================
+          # INSTALL DEPENDENCIES SAFELY IN PRODUCTION
+          # ======================================================
           COMPOSER_ALLOW_SUPERUSER=1 php -d error_reporting=0 $(which composer) install --no-interaction --prefer-dist --optimize-autoloader
-          
-          # 🔍 Mini check de que OCI8 está cargado
-          echo "🔍 Verificando que OCI8 esté cargado en PHP CLI..."
-          if php -m | grep -qi oci8; then
-            echo "✔ OCI8 cargado en PHP"
-          else
-            echo "❌ OCI8 NO está cargado en PHP (cli)."
-            exit 1
+
+          echo "📦 Instalando Yajra SOLO en producción..."
+          COMPOSER_ALLOW_SUPERUSER=1 php -d error_reporting=0 $(which composer) require yajra/laravel-oci8:^9.0 --no-interaction
+
+          echo "🔧 Registrando Service Provider dinámicamente..."
+          if ! grep -q "Yajra\\Oci8\\Oci8ServiceProvider::class" config/app.php; then
+            sed -i "/'providers' => \[/a\        Yajra\\Oci8\\Oci8ServiceProvider::class," config/app.php
           fi
 
+          # ======================================================
+          # REBUILD LARAVEL CACHE
+          # ======================================================
           php artisan config:clear
           php artisan cache:clear
           php artisan route:clear
@@ -358,12 +343,10 @@ jobs:
           # MIGRACIONES
           # ======================================================
           echo "🔍 RUN_MIGRATIONS = '$RUN_MIGRATIONS'"
-          
           if [ "$RUN_MIGRATIONS" = "yes" ]; then
-            echo "🛠 Ejecutando migraciones..."
-            php artisan migrate --force || { echo "❌ ERROR: Migraciones fallaron"; exit 1; }
+            php artisan migrate --force || { echo "❌ Migraciones fallaron"; exit 1; }
           else
-            echo "⚠ Migraciones NO ejecutadas por selección del usuario"
+            echo "⚠ Migraciones NO ejecutadas"
           fi
 
           echo "✔ DEPLOY VMWARE COMPLETADO"
@@ -375,13 +358,7 @@ jobs:
 
           DUMP_NAME=hybridflow_$(date +%Y%m%d_%H%M%S)
           BACKUP_DIR=/var/backups/hybridflow/$DUMP_NAME
-
           sudo mkdir -p "$BACKUP_DIR"
-
-          if ! command -v sshpass >/dev/null 2>&1; then
-            sudo apt-get update -y
-            sudo apt-get install -y sshpass --no-install-recommends
-          fi
 
           sshpass -p "UTNGRUPO02**" ssh -o StrictHostKeyChecking=no Administrador@137.0.30.3 \
             "cd C:/Oracle19c/bin && \
@@ -401,14 +378,14 @@ jobs:
           PROXMOX
 
       # ======================================================
-      # 4) HEALTH CHECK FINAL (Apache)
+      # 4) HEALTH CHECK FINAL
       # ======================================================
-      - name: Health Check Oracle (Proxmox → VMware vía túnel)
+      - name: Health Check Oracle (Proxmox → VMware)
         run: |
           ssh -o StrictHostKeyChecking=no ubuntu@10.50.31.23 << 'CHECK'
           ssh -p 43000 -o StrictHostKeyChecking=no ubuntu@localhost << 'VMWARE'
 
-          echo "⏳ Esperando a que Apache levante (5s)..."
+          echo "⏳ Esperando Apache (5s)..."
           sleep 5
 
           for i in {1..5}; do
@@ -419,11 +396,10 @@ jobs:
               echo "✔ Oracle OK vía Apache"
               exit 0
             }
-
             sleep 3
           done
 
-          echo "❌ Oracle no respondió correctamente después de 5 intentos"
+          echo "❌ Oracle NO respondió correctamente"
           exit 1
 
           VMWARE
