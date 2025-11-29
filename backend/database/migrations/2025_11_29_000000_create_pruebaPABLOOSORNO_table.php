@@ -8,7 +8,7 @@ return new class extends Migration
 {
     public function up()
 {
-    Schema::create('pruebaLUISCARLOS', function (Blueprint $table) {
+    Schema::create('pruebaPABLOOSORNO', function (Blueprint $table) {
         $table->id();
         $table->string('titulo');
         $table->timestamp('creado_en')->useCurrent();
@@ -17,9 +17,12 @@ return new class extends Migration
 
 public function down()
 {
-    Schema::dropIfExists('pruebaLUISCARLOS');
+    Schema::dropIfExists('pruebas_deploy');
 }
  
 };
+
+
+
 
 
