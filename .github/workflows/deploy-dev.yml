@@ -198,7 +198,7 @@ jobs:
         run: sleep ${{ steps.calc.outputs.wait_seconds }}
 
 
-  # ======================================================
+    # ======================================================
   # Deploy Producción (VMware via SSH Tunnel)
   # ======================================================
 
@@ -333,6 +333,17 @@ jobs:
           sudo systemctl reload apache2
 
           composer install --no-interaction --prefer-dist --optimize-autoloader
+
+          # ======================================================
+          # YAJRA + PROVIDER (SIEMPRE, PARA QUE NO SE PIERDA)
+          # ======================================================
+          echo "📦 Instalando soporte Oracle (Yajra)..."
+          composer require yajra/laravel-oci8:^9.0 --no-interaction
+
+          echo "🔧 Asegurando que el Service Provider de Yajra esté registrado..."
+          if ! grep -q "Yajra\\Oci8\\Oci8ServiceProvider::class" config/app.php; then
+            sed -i "/'providers' => \[/a\        Yajra\\Oci8\\Oci8ServiceProvider::class," config/app.php
+          fi
 
           # 🔍 Mini check de que OCI8 está cargado
           echo "🔍 Verificando que OCI8 esté cargado en PHP CLI..."
