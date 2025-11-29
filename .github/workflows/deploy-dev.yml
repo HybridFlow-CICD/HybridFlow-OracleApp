@@ -285,7 +285,7 @@ jobs:
           sudo cp -r build/* /var/www/html/frontend-app/
           echo "✔ Frontend desplegado correctamente"
 
-          # ============ NUEVO: VIRTUALHOST FRONTEND ====================
+          # ============ VIRTUALHOST FRONTEND ====================
           if [ ! -f /etc/apache2/sites-available/frontend.conf ]; then
             sudo bash -c 'cat > /etc/apache2/sites-available/frontend.conf' << "EOF"
           <VirtualHost *:80>
@@ -301,9 +301,9 @@ jobs:
               CustomLog ${APACHE_LOG_DIR}/frontend-access.log combined
           </VirtualHost>
           EOF
-                    sudo a2ensite frontend.conf
-                  fi
-          # =============================================================
+            sudo a2ensite frontend.conf
+          fi
+          # ======================================================
 
           # ======================================================
           # BACKEND
@@ -330,24 +330,35 @@ jobs:
           </VirtualHost>
           EOF
 
-                  sudo systemctl reload apache2
+          sudo systemctl reload apache2
 
-                  composer install --no-interaction --prefer-dist --optimize-autoloader
+          composer install --no-interaction --prefer-dist --optimize-autoloader
 
-                  php artisan config:clear
-                  php artisan cache:clear
-                  php artisan route:clear
-                  php artisan optimize:clear
-                  php artisan config:cache
+          # 🔍 Mini check de que OCI8 está cargado
+          echo "🔍 Verificando que OCI8 esté cargado en PHP CLI..."
+          if php -m | grep -qi oci8; then
+            echo "✔ OCI8 cargado en PHP"
+          else
+            echo "❌ OCI8 NO está cargado en PHP (cli)."
+            exit 1
+          fi
 
-                  echo "🔌 Probando conexión Oracle vía Laravel..."
-                  php artisan tinker --execute="DB::connection()->getPdo();" \
-                    && echo "✔ Oracle OK" \
-                    || { echo "❌ Oracle FAIL"; exit 1; }
+          php artisan config:clear
+          php artisan cache:clear
+          php artisan route:clear
+          php artisan optimize:clear
+          php artisan config:cache
+
+          echo "🔌 Probando conexión Oracle vía Laravel (CLI)..."
+          php artisan tinker --execute="DB::connection()->getPdo();" \
+            && echo "✔ Oracle OK (CLI)" \
+            || { echo "❌ Oracle FAIL (CLI)"; exit 1; }
 
           # ======================================================
           # MIGRACIONES
           # ======================================================
+          echo "🔍 RUN_MIGRATIONS = '$RUN_MIGRATIONS'"
+          
           if [ "$RUN_MIGRATIONS" = "yes" ]; then
             echo "🛠 Ejecutando migraciones..."
             php artisan migrate --force || { echo "❌ ERROR: Migraciones fallaron"; exit 1; }
@@ -417,6 +428,7 @@ jobs:
 
           VMWARE
           CHECK
+
 
   # ======================================================
   # 3) Notificación a Discord
