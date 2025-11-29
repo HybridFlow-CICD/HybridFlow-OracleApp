@@ -226,7 +226,7 @@ jobs:
       # ======================================================
       - name: Deploy PRODUCCIÓN
         env:
-          RUN_MIGRATIONS: ${{ needs.wait-for-prod.outputs.run_migrations }}
+          RUN_MIGRATIONS: ${{ github.event.inputs.run_migrations }}
 
         run: |
           echo "⚡ Iniciando deploy producción..."
@@ -294,6 +294,7 @@ jobs:
           php artisan tinker --execute="DB::connection()->getPdo();" \
             && echo "✔ Oracle OK (CLI)" \
             || { echo "❌ Oracle FAIL (CLI)"; exit 1; }
+
           # ======================================================
           # MIGRACIONES
           # ======================================================
@@ -304,6 +305,7 @@ jobs:
             echo "⚠ Migraciones NO ejecutadas"
           fi
           echo "✔ DEPLOY VMWARE COMPLETADO"
+
           # ======================================================
           # BACKUP ORACLE
           # ======================================================
@@ -323,6 +325,7 @@ jobs:
           echo "✔ Backup Oracle guardado en $BACKUP_DIR"
           VMWARE
           PROXMOX
+
       # ======================================================
       # 4) HEALTH CHECK FINAL
       # ======================================================
@@ -345,6 +348,7 @@ jobs:
           exit 1
           VMWARE
           CHECK
+          
   # ======================================================
   # 3) Notificación a Discord
   # ======================================================
